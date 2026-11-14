@@ -1,0 +1,19 @@
+name: Build & Test VUKANG OS
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nasm qemu-system-x86 grub-pc-bin grub-common xorriso mtools
+      - name: Build kernel + ISO
+        run: make iso
+      - name: Boot test in QEMU (16 checks)
+        run: make test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vukang-os-iso
+          path: build/vukang-os.iso
