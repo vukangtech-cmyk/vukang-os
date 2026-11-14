@@ -209,6 +209,7 @@ static int st_select(void) {
 
     /* collect matching rows */
     uint32_t *idx = kmalloc((t->hdr.nslots + 1) * sizeof(uint32_t));
+    if (!idx) ERR("out of memory");
     uint32_t m = 0;
     for (uint32_t s = 0; s < t->hdr.nslots; s++) if (row_matches(t, tbl_row(t, s))) idx[m++] = s;
 
@@ -319,6 +320,7 @@ static int st_delete(void) {
 static int st_show(void) {
     if (expect_kw("TABLES")) return -1;
     vkfs_entry_t *e = kmalloc(sizeof(vkfs_entry_t) * VKFS_MAX_FILES);
+    if (!e) ERR("out of memory");
     int n = vkfs_list(e, VKFS_MAX_FILES), c = 0;
     kprintf("Tables:\n");
     for (int i = 0; i < n; i++)

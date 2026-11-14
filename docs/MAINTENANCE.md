@@ -6,7 +6,7 @@ Hivi ndivyo tutakavyoendeleza mradi kwa nidhamu.
 
 1. `main` ni tawi linalofanya kazi siku zote. Majaribio lazima yapite.
 2. Kila kipengele kipya kinafanyika kwenye tawi lake: `feature/b-tree-index`, `fix/ata-timeout`.
-3. Unafungua Pull Request. GitHub Actions inajenga ISO na kuendesha majaribio 16 kiotomatiki.
+3. Unafungua Pull Request. GitHub Actions inajenga ISO na kuendesha checks 26 kiotomatiki (pamoja na `selftest` na `security`).
 4. Una-merge PR baada ya CI kuwa kijani.
 
 ```bash
@@ -36,11 +36,25 @@ static void c_hello(char *a) { kprintf("Habari %s\n", a); }
 { "hello", "<jina>", "salamu", c_hello },
 ```
 
+## Kuongeza programu mpya ya user (ring 3)
+
+1. Andika `user/jina.c` ukitumia `user/ulib.h` (mfano `sys_write`, `sys_sleep`, `sys_exit`). Programu inaanzia `main()`; `crt0.c` inaiita na kufanya `exit`.
+2. Ongeza `jina` kwenye `USER_PROGS` ndani ya `Makefile`.
+3. `make run` kisha `progs` na `run jina`. Programu inaunganishwa kwenye `0x40000000` na inapata address space yake.
+
 ## Kuongeza syscall mpya
 
 1. Ongeza namba kwenye `enum` ndani ya `kernel/proc/syscall.c`.
 2. Ongeza `case` ndani ya `syscall_dispatch`.
-3. Andika jaribio la ring 3 linaloitumia.
+3. Kila pointer kutoka user lazima ikaguliwe kwa `vmm_user_range_ok()` / `vmm_user_strlen()` kabla ya kuisoma; rudisha `-EFAULT` kama si halali.
+4. Andika programu ya ring 3 inayoitumia, na jaribio kwenye `scripts/qemu_test.py`.
+
+## Kanuni za usalama wa memory
+
+- Usiweke `PG_USER` nje ya `USER_BASE..USER_END` (`vmm_map` itakataa).
+- Kagua status ya `pmm_free()`; frames za kudumu zifungwe kwa `pmm_lock()`.
+- Kagua kila `kmalloc()` dhidi ya `NULL`.
+- Kabla ya kila release: `selftest` iwe 23/23 na `security` iwe 6/6.
 
 ## Kanuni za msimbo
 
@@ -56,7 +70,9 @@ static void c_hello(char *a) { kprintf("Habari %s\n", a); }
 |---|---|---|
 | QEMU inajiwasha upya mfululizo | triple fault: IDT/GDT mbaya au stack imeharibika | `qemu-system-i386 -d int,cpu_reset -no-reboot` |
 | "KERNEL EXCEPTION Page Fault" | pointer mbaya. CR2 inaonyesha anwani | angalia EIP kwa `addr2line -e build/vukang.kernel <EIP>` |
-| "heap corruption detected" | kuandika nje ya buffer | angalia `kmalloc` iliyo karibu |
+| "heap buffer overflow detected (canary smashed)" | kuandika nje ya buffer ya `kmalloc` | angalia block iliyoachiliwa mwisho |
+| "[heap] rejected kfree" | pointer ya kigeni au double free | tafuta `kfree` inayoitwa mara mbili |
+| "[pid N ...] Page Fault ... -> process killed" | programu ya user imegusa anwani isiyoruhusiwa | ujumbe unaonyesha anwani na aina ya kosa |
 | Disk haionekani | QEMU haina `-drive` | tumia `make run` |
 
 GDB: `qemu-system-i386 -s -S -cdrom build/vukang-os.iso`, kisha `gdb build/vukang.kernel -ex "target remote :1234"`.

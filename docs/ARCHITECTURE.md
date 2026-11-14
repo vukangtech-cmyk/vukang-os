@@ -41,25 +41,46 @@ Kila interrupt inapita `isr_common` (assembly). Inahifadhi register zote, kisha 
 
 ## 3. Kumbukumbu: `kernel/mm/`
 
-- **Frame allocator (`pmm.c`)**: GRUB inatupa ramani ya RAM. Tunatumia bitmap yenye bit 1 kwa kila ukurasa wa 4 KiB (0 = huru, 1 = unatumika). Eneo la BIOS na kernel yenyewe vinahifadhiwa.
-- **Paging (`paging.c`)**: Page directory + page tables (ngazi 2). RAM yote inawekwa identity map (virtual = physical). **Ukurasa 0 hauwekwi**, hivyo kosa la NULL pointer linasababisha page fault badala ya kuharibu data kimya kimya.
-- **Heap (`heap.c`)**: `kmalloc`/`kfree` ya 8 MiB yenye first-fit, kugawa blocks (split) na kuunganisha blocks huru (coalesce). Kila block ina namba ya kichawi `VKHP`, hivyo uharibifu wa heap au double free unagunduliwa mara moja.
+Mpangilio wa kuwaka ni **`pmm_init` → `paging_init` → `heap_init`**, ili heap ijengwe juu ya RAM halisi iliyokwisha wekwa kwenye page tables.
 
-## 4. Tasks na user mode: `kernel/proc/`
+### Ramani ya kumbukumbu (virtual)
 
-- **`task.c`**: Hadi tasks 32. Kila task ina stack ya 16 KiB. Task mpya inaundwa kwa "kuchora" interrupt frame ya bandia juu ya stack yake, ili scheduler iweze kuiingia kama ilivyokatizwa tu. Hali za task ni ready, running, sleeping na dead.
+```
+0x00000000          ukurasa 0: HAUJAWEKWA (NULL guard)
+0x00001000 .. 1 MiB BIOS, VGA 0xB8000          supervisor-only, locked
+0x00100000 ..       kernel image (.text/.data/.bss)  supervisor-only, locked
+   ..               heap ya kernel (8 MiB)     supervisor-only, locked
+   .. kernel_limit  RAM iliyobaki (frames huru) supervisor-only
+0x40000000          USER_BASE: code + data ya ELF (ya kila process peke yake, PG_USER)
+   ..               nafasi huru ya user
+0x7FFFB000..7FFFF000 user stack (kurasa 4)
+0x7FFFF000          guard page (haijawekwa)
+0x80000000          USER_END
+```
+
+- **Frame allocator (`pmm.c`)**: Bitmap mbili. `used[]` inaonyesha frame inayotumika, `locked[]` inaonyesha frame ambayo haiwezi kuachiliwa kamwe: BIOS, kernel image, data ya multiboot (info, mmap, cmdline, modules), page tables za kernel na heap. Ramani ya GRUB inasomwa kwa namba za 64-bit na kuwekewa kikomo cha 1 GiB. `pmm_free` inakagua alignment, mipaka, lock na double free kabla ya kugusa hesabu, na inarudisha `pmm_status_t`. Pia kuna `pmm_alloc_zero` na `pmm_alloc_contiguous`.
+- **Paging (`paging.c`)**: Page directory + page tables (ngazi 2). RAM inayosimamiwa inawekwa identity map **bila `PG_USER`**, hivyo ring 3 haiwezi kuigusa. Ukurasa 0 haujawekwa (NULL pointer = page fault) na CR0.WP imewashwa. Kila process ina page directory yake inayoshiriki PDE za kernel, lakini sehemu ya user ni yake peke yake. API: `vmm_create_space`, `vmm_destroy_space`, `vmm_map` (inakataa `PG_USER` nje ya user range), `vmm_lookup`, `vmm_switch`, `vmm_user_range_ok`, `vmm_user_strlen`.
+- **Heap (`heap.c`)**: `kmalloc`/`kfree`/`krealloc` juu ya eneo linalofuatana lililoombwa kutoka PMM na kufungwa (8 MiB, au nusu yake hadi 1 MiB kama RAM ni ndogo). Inathibitishwa kuwa juu ya `kernel_end` na ndani ya ramani ya kernel. Kila block ina header ya bytes 16 (magic `VKHU`/`VKHF`, size, req, next), canary `0xC0FFEE42` baada ya data, na kumbukumbu inayoachiliwa inajazwa `0xDD`. `kfree` inathibitisha pointer kabla ya kusoma header. Maelezo kamili yako [SECURITY.md](SECURITY.md).
+
+## 4. Processes na user mode: `kernel/proc/`, `user/`
+
+- **`task.c`**: Hadi tasks 32. Kila task ina kernel stack ya 16 KiB, na process ya user pia ina page directory (`pd`). Kuna **idle task** (`sti; hlt`) ili tasks zikilala zote CPU ipumzike. Scheduler (round-robin) inabadilisha CR3 na `TSS.esp0` kwa kila task. `process_spawn` inaunda address space, inapakia ELF, inaweka user stack na kuchora interrupt frame ya ring 3 ambayo `iret` inaiingia. `task_wait`, `task_try_wait` na `task_detach` zinasubiri au kuachia process; ikifa, frames zake zote zinarudishwa PMM.
+- **`elf.c`**: ELF32 loader yenye ukaguzi wa mipaka: header, aina (i386, executable), kila segment lazima iwe ndani ya user space na chini ya stack, na data isizidi faili.
+- **`programs.c` + `user/`**: Programu za user zimeandikwa kwa C (`user/*.c`, `ulib.h`, `crt0.c`) na kuunganishwa kwenye `0x40000000` kwa `user/user.ld`. `Makefile` inazijenga kama ELF na kuziweka ndani ya kernel kwa `incbin` (`build/user/programs.asm`).
 - **`syscall.c`**: `int 0x80` yenye `EAX` = namba ya syscall:
 
 | # | Syscall | Kazi |
 |---|---|---|
-| 0 | exit(code) | maliza programu |
-| 1 | write(str) | andika kwenye console |
+| 0 | exit(code) | maliza process |
+| 1 | write(str) | andika kwenye console (pointer inakaguliwa, `-EFAULT` = -14) |
 | 2 | ticks() | muda tangu kuwaka |
 | 3 | yield() | toa CPU kwa task nyingine |
 | 4 | getpid() | namba ya task |
 | 5 | sleep(ms) | lala |
 
-- **`usermode.asm`**: `enter_usermode` inashusha CPU kwenda ring 3 kwa `iret`. Programu ya ring 3 ikijaribu amri ya hatari (mfano `cli`), CPU inatoa General Protection Fault. Kernel inaimaliza programu hiyo tu na kuendelea kufanya kazi. Hiki ndicho kiini cha usalama wa OS za kisasa.
+Namba isiyojulikana inarudisha `-ENOSYS`.
+
+- **Makosa (`kernel/arch/idt.c`)**: Page Fault au GPF kutoka ring 3 inaua process hiyo tu (exit -11 / -13) kwa ujumbe unaoeleza kosa. Kosa ndani ya kernel bado ni panic.
 
 ## 5. Drivers: `drivers/`
 
@@ -75,7 +96,7 @@ Kila interrupt inapita `isr_common` (assembly). Inahifadhi register zote, kisha 
 ## 6. Hifadhi: `fs/`
 
 - **`blockdev.c`**: Kiolesura kimoja cha "block device". Kama hard disk ipo inatumika ATA. Kama haipo, kuna RAM disk ya 4 MiB. Sehemu za juu hazijui tofauti.
-- **VKFS (`vkfs.c`)**: Muundo wa disk:
+- **VKFS (`vkfs.c`)**: Wakati wa mount superblock inakaguliwa (geometry na mipaka), na kila entry ya directory inathibitishwa; entries mbovu zinaondolewa. Muundo wa disk:
 
 ```
 LBA 0      : imehifadhiwa (boot sector)
@@ -104,10 +125,17 @@ lexer → parser inatambua SELECT → `tbl_open` inapakia table (kutoka cache au
 
 Jedwali la amri (`commands[]`): kila amri ina jina, maelezo na function. Kuongeza amri mpya ni kuongeza mstari mmoja tu. `clockd` ni task ya nyuma (daemon) inayoonyesha saa kona ya juu kulia. Hiyo ni ushahidi wa multitasking unaoonekana kwa macho.
 
+## 9. Majaribio: `kernel/selftest.c`, `scripts/qemu_test.py`
+
+- `selftest`: majaribio 23 ndani ya kernel (PMM, heap, paging).
+- `security`: programu 6 za ring 3 zinazoshambulia kernel.
+- `make test`: checks 26 kupitia serial console ya QEMU, pamoja na leak ya frames, persistence ya disk, directory entry mbovu na superblock ya uongo.
+
 ## Mipaka ya sasa (kwa uwazi)
 
 - 32-bit, CPU moja (hakuna SMP bado).
-- Programu za user zinaishi ndani ya kernel image; bado hakuna ELF loader wala address space tofauti kwa kila programu.
+- Programu za ELF zimewekwa ndani ya kernel image. Kuzipakia kutoka VKFS, `fork`/`exec` na syscalls za faili ni kazi ya v0.3.
+- Hakuna NX bit (inahitaji PAE) wala ASLR.
 - VukangDB: aina INT na TEXT (herufi 31), columns 8, hakuna JOIN wala index (B-tree) bado, na hakuna journal ya kulinda data umeme ukikatika katikati ya kuandika.
 
 Haya yote yako kwenye [ROADMAP](ROADMAP.md).
