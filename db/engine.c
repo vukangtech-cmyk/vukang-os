@@ -81,9 +81,14 @@ static bool row_matches(table_t *t, uint8_t *row) {
 }
 
 /* ---------- auto-commit helper ---------- */
+/* In auto-commit mode a failed write discards the cached table so it is
+ * reloaded from disk: memory never holds changes the disk does not have. */
 static int done_write(table_t *t) {
     t->dirty = true;
-    if (!db_in_txn && !tbl_flush(t)) ERR("disk write failed");
+    if (!db_in_txn && !tbl_flush(t)) {
+        tbl_discard(t);
+        ERR("disk write failed (disk full?) - statement not saved, table unchanged");
+    }
     return 0;
 }
 
@@ -132,14 +137,21 @@ static int pk_conflict(table_t *t, uint8_t *self, int col, uint8_t *val) {
     return 0;
 }
 
-static int st_insert(void) {
-    char name[DB_NAME_LEN];
-    if (expect_kw("INTO") || ident(name)) return -1;
-    table_t *t = tbl_open(name);
-    if (!t) ERR("no such table '%s'", name);
-    if (expect_kw("VALUES")) return -1;
-    int count = 0;
+/* INSERT is all-or-nothing: every slot added by this statement is recorded
+ * in added[]; if any tuple fails (syntax, type, duplicate key, memory) all of
+ * them are removed again before the error is reported. */
+#define MAX_STMT_ROWS 64
+
+static void undo_rows(table_t *t, const uint32_t *added, int n) {
+    for (int k = 0; k < n; k++) {
+        uint8_t *r = tbl_row(t, added[k]);
+        if (r[0]) { r[0] = 0; t->hdr.nlive--; }
+    }
+}
+
+static int insert_tuples(table_t *t, uint32_t *added, int *count) {
     do {
+        if (*count >= MAX_STMT_ROWS) ERR("too many rows in one INSERT (max %d)", MAX_STMT_ROWS);
         if (expect_sym('(')) return -1;
         uint8_t tmp[1 + DB_MAX_COLS * DB_TEXT_LEN];
         memset(tmp, 0, sizeof tmp); tmp[0] = 1;
@@ -155,8 +167,24 @@ static int st_insert(void) {
         uint8_t *row = tbl_new_row(t);
         if (!row) ERR("out of memory");
         memcpy(row, tmp, t->hdr.row_size);
-        count++;
+        added[(*count)++] = (uint32_t)(row - t->rows) / t->hdr.row_size;
     } while (accept_sym(','));
+    return 0;
+}
+
+static int st_insert(void) {
+    char name[DB_NAME_LEN];
+    if (expect_kw("INTO") || ident(name)) return -1;
+    table_t *t = tbl_open(name);
+    if (!t) ERR("no such table '%s'", name);
+    if (expect_kw("VALUES")) return -1;
+    uint32_t added[MAX_STMT_ROWS];
+    int count = 0;
+    if (insert_tuples(t, added, &count)) {
+        undo_rows(t, added, count);
+        if (count) kprintf("(%d row(s) of this statement undone)\n", count);
+        return -1;
+    }
     if (done_write(t)) return -1;
     kprintf("%d row(s) inserted.\n", count);
     return 0;
@@ -285,6 +313,23 @@ static int st_update(void) {
         ns++;
     } while (accept_sym(','));
     if (parse_where(t)) return -1;
+
+    /* Pass 1 - check: nothing is modified until every rule holds. */
+    uint32_t matches = 0; uint8_t *only = 0;
+    for (uint32_t s = 0; s < t->hdr.nslots; s++)
+        if (row_matches(t, tbl_row(t, s))) { matches++; only = tbl_row(t, s); }
+    for (int i = 0; i < ns && matches; i++) {
+        if (!(t->hdr.cols[scol[i]].type & COL_PK)) continue;
+        if (matches > 1)
+            ERR("UPDATE would give %u rows the same PRIMARY KEY '%s'", matches, t->hdr.cols[scol[i]].name);
+        uint8_t val[DB_TEXT_LEN];
+        memset(val, 0, sizeof val);
+        if (col_type(t, scol[i]) == COL_INT) *(int *)val = sval[i].num;
+        else strncpy((char *)val, sval[i].text, DB_TEXT_LEN - 1);
+        if (pk_conflict(t, only, scol[i], val)) ERR("duplicate PRIMARY KEY for '%s'", t->hdr.cols[scol[i]].name);
+    }
+
+    /* Pass 2 - apply. */
     int n = 0;
     for (uint32_t s = 0; s < t->hdr.nslots; s++) {
         uint8_t *r = tbl_row(t, s);

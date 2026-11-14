@@ -42,6 +42,7 @@ typedef struct {
 table_t *tbl_open(const char *name);                /* cached load */
 table_t *tbl_create(const char *name, column_t *cols, int ncols);
 bool     tbl_flush(table_t *t);
+void     tbl_discard(table_t *t);              /* drop cached copy, reload from disk */
 bool     tbl_drop(const char *name);
 void     tbl_rollback(void);
 bool     tbl_commit(void);

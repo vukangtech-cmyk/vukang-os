@@ -96,7 +96,7 @@ Namba isiyojulikana inarudisha `-ENOSYS`.
 ## 6. Hifadhi: `fs/`
 
 - **`blockdev.c`**: Kiolesura kimoja cha "block device". Kama hard disk ipo inatumika ATA. Kama haipo, kuna RAM disk ya 4 MiB. Sehemu za juu hazijui tofauti.
-- **VKFS (`vkfs.c`)**: Wakati wa mount superblock inakaguliwa (geometry na mipaka), na kila entry ya directory inathibitishwa; entries mbovu zinaondolewa. Muundo wa disk:
+- **VKFS (`vkfs.c`)**: Wakati wa mount superblock inakaguliwa (geometry na mipaka), na kila entry ya directory inathibitishwa; entries mbovu zinaondolewa. `vkfs_write` haiachilii nafasi ya zamani mpaka data mpya iwe imefika salama: inakuza extent pale pale (`extend_extent`) au inapata extent mpya huku ya zamani bado imeshikiliwa. Kwa hiyo disk ikijaa faili lililopo halipotei. Muundo wa disk:
 
 ```
 LBA 0      : imehifadhiwa (boot sector)
@@ -113,8 +113,8 @@ Faili linapokua, linapewa nafasi ya ziada ya 50% ili lisihamishwe kila mara.
 Database ndani ya OS. Ina tabaka tatu:
 
 1. **Lexer (`lexer.c`)**: Inavunja SQL kuwa tokens (maneno, namba, maandishi, alama kama `>=` na `!=`).
-2. **Storage engine (`storage.c`)**: Kila table ni faili `jina.tbl` ndani ya VKFS. Faili lina header ya bytes 512 (schema: columns hadi 8, aina INT/TEXT, PRIMARY KEY) ikifuatiwa na rows za ukubwa sawa. Tables zinakaa kwenye **cache (buffer pool)** ya tables 16.
-3. **SQL engine (`engine.c`)**: Parser ya recursive-descent inayotekeleza amri moja kwa moja.
+2. **Storage engine (`storage.c`)**: Kila table ni faili `jina.tbl` ndani ya VKFS. Faili lina header ya bytes 512 (schema: columns hadi 8, aina INT/TEXT, PRIMARY KEY) ikifuatiwa na rows za ukubwa sawa. Tables zinakaa kwenye **cache (buffer pool)** ya tables 16. `tbl_flush` inapanga RAM upya baada ya kuandika kufanikiwa tu, na kuandika kukishindwa `tbl_discard` inatupa nakala ya RAM ili table isomwe upya kutoka disk.
+3. **SQL engine (`engine.c`)**: Parser ya recursive-descent inayotekeleza amri moja kwa moja. INSERT na UPDATE ni "yote au hakuna": INSERT inakumbuka slots ilizoongeza (`added[]`, hadi 64) na kuziondoa kosa likitokea, na UPDATE inakagua kila kitu, ikiwemo PRIMARY KEY, kabla ya kubadilisha row yoyote.
 
 **Transactions**: Bila `BEGIN`, kila mabadiliko yanaandikwa disk papo hapo (auto-commit). Ndani ya `BEGIN`, mabadiliko yanakaa kwenye cache tu. `COMMIT` inayaandika disk, na `ROLLBACK` inatupa tables chafu (dirty) kutoka cache. Hivyo data ya disk inabaki kama ilivyokuwa.
 
@@ -137,7 +137,7 @@ Jedwali la amri (`commands[]`): kila amri ina jina, maelezo na function. Kuongez
 
 - `selftest`: majaribio 23 ndani ya kernel (PMM, heap, paging).
 - `security`: programu 6 za ring 3 zinazoshambulia kernel.
-- `make test`: checks 30 kupitia serial console ya QEMU, pamoja na leak ya frames, persistence ya disk, directory entry mbovu na superblock ya uongo.
+- `make test`: checks 30 kupitia serial console ya QEMU (leak ya frames, persistence ya disk, directory entry mbovu, superblock ya uongo), kisha checks 12 za `scripts/integrity_test.py`: disk iliyojaa, INSERT na UPDATE za "yote au hakuna", na PRIMARY KEY. Jumla 42.
 
 ## Mipaka ya sasa (kwa uwazi)
 

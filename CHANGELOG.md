@@ -1,9 +1,17 @@
 # Changelog
 
-## [Haijatolewa]
-### Imeongezwa
-- `make versions`, `make run-version V=<tag>` na wenzake (`scripts/version.sh`): kuwasha toleo lolote la zamani au jipya, kila moja kwenye worktree na disk yake
+## [0.2.2] "Serengeti" - 2026-11-14
+Toleo la usalama wa data. Maelezo kamili: [docs/SECURITY.md](docs/SECURITY.md) (sehemu ya v0.2.2).
 
+### Imerekebishwa
+- VKFS: disk ikijaa, table (faili) ilifutwa. `vkfs_write` sasa inahifadhi extent ya zamani mpaka data mpya iwe salama (`extend_extent`, `alloc_extent` bila kuachilia), na `sb.files` inaongezwa kwa faili jipya tu
+- VukangDB: INSERT ya rows nyingi iliyoshindwa iliacha rows nusu (hata ndani ya BEGIN/ROLLBACK). Sasa ni yote au hakuna (`insert_tuples`, `undo_rows`, `MAX_STMT_ROWS` 64)
+- VukangDB: `tbl_flush` ilipanga RAM upya kabla ya kuandika. Sasa inapanga baada ya mafanikio tu; `tbl_discard` inatupa nakala ya RAM kuandika kukishindwa
+- VukangDB: UPDATE iliweza kuvunja PRIMARY KEY. Sasa ina hatua mbili (kukagua, kisha kutumia)
+
+### Imeongezwa
+- `scripts/integrity_test.py` (checks 12) na `make test-integrity`; `make test` sasa ni checks 42
+- `make versions`, `make run-version V=<tag>` na wenzake (`scripts/version.sh`): kuwasha toleo lolote, kila moja kwenye worktree na disk yake
 
 ## [0.2.1] "Serengeti" - 2026-11-14
 Toleo la sura mpya: boot animation na console ya graphics.

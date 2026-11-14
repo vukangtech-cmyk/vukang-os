@@ -6,7 +6,7 @@ Hivi ndivyo tutakavyoendeleza mradi kwa nidhamu.
 
 1. `main` ni tawi linalofanya kazi siku zote. Majaribio lazima yapite.
 2. Kila kipengele kipya kinafanyika kwenye tawi lake: `feature/b-tree-index`, `fix/ata-timeout`.
-3. Unafungua Pull Request. GitHub Actions inajenga ISO na kuendesha checks 30 kiotomatiki (pamoja na `selftest` na `security`).
+3. Unafungua Pull Request. GitHub Actions inajenga ISO na kuendesha checks 42 kiotomatiki (pamoja na `selftest` na `security`).
 4. Una-merge PR baada ya CI kuwa kijani.
 
 ```bash
@@ -89,6 +89,13 @@ Muda, rangi na idadi ya chembe ziko juu ya `kernel/splash.c`. Font inabadilishwa
 - Kagua status ya `pmm_free()`; frames za kudumu zifungwe kwa `pmm_lock()`.
 - Kagua kila `kmalloc()` dhidi ya `NULL`.
 - Kabla ya kila release: `selftest` iwe 23/23 na `security` iwe 6/6.
+
+## Kanuni za usalama wa data
+
+- Usiachilie nafasi ya zamani kabla ya mpya kupatikana na data kuandikwa salama.
+- Kila statement ya SQL ni "yote au hakuna": kagua kwanza, badilisha baadaye, au kumbuka ulichoongeza ili ukiondoe.
+- RAM isitofautiane na disk: kuandika kukishindwa, tupa cache (`tbl_discard`).
+- Kila kosa la data linapata jaribio kwenye `scripts/integrity_test.py` linaloshindwa kwenye msimbo wa zamani na kupita kwenye mpya.
 
 ## Kanuni za msimbo
 

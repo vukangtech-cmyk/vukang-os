@@ -28,7 +28,7 @@ USER_ELFS  := $(patsubst %,$(BUILD)/user/%.elf,$(USER_PROGS))
 PROG_ASM   := $(BUILD)/user/programs.asm
 OBJ        += $(BUILD)/user/programs.asm.o
 
-.PHONY: all iso run run-serial disk clean test splash font versions run-version run-serial-version iso-version test-version clean-versions
+.PHONY: all iso run run-serial disk clean test test-integrity splash font versions run-version run-serial-version iso-version test-version clean-versions
 
 all: $(KERNEL)
 
@@ -99,6 +99,10 @@ run-serial: iso disk
 
 test: iso
 	@bash scripts/test.sh
+
+# Only the VKFS / VukangDB data-integrity checks (disk full, atomic INSERT/UPDATE)
+test-integrity: all
+	@python3 scripts/integrity_test.py build/vukang.kernel
 
 # Any released version side by side (scripts/version.sh), e.g.
 #   make versions                 list tags

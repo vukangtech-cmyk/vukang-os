@@ -6,7 +6,7 @@ Kila suluhisho lina njia tatu za kuthibitisha:
 
 - **`security`**: amri ya shell inayoendesha programu 6 za ring 3 zinazojaribu kushambulia kernel. Zote lazima zizuiwe ("6/6 protections held").
 - **`selftest`**: majaribio 23 yanayokimbia ndani ya kernel yenyewe dhidi ya PMM, heap na paging ("23 passed, 0 failed").
-- **`make test`**: majaribio 30 ya kiotomatiki yanayowasha OS ndani ya QEMU (pia yanaendeshwa na GitHub Actions kwa kila PR).
+- **`make test`**: majaribio 42 ya kiotomatiki yanayowasha OS ndani ya QEMU (pia yanaendeshwa na GitHub Actions kwa kila PR).
 
 ---
 
@@ -119,6 +119,46 @@ Mstari wa boot unaonyesha: `heap 8 MiB at 0x...-0x... (locked, inside map)`. Tum
 
 ---
 
+## v0.2.2: Usalama wa data (VKFS na VukangDB)
+
+Matatizo matatu yaliyoweza kupoteza au kuharibu data. Yote yamethibitishwa na `scripts/integrity_test.py` (checks 12). Kwenye msimbo wa v0.2.1 checks 2 tu kati ya 12 zilipita. Sasa zinapita zote 12.
+
+### A. Disk ikijaa, table ilifutwa (`fs/vkfs.c`, `vkfs_write`)
+**Chanzo:** `vkfs_write` iliachilia extent ya zamani kabla ya kupata mpya. Ikishindwa kupata nafasi, ilifuta entry ya faili, kwa hiyo table nzima ilipotea.
+
+**Suluhisho:**
+1. `old_start` na `old_alloc` zinahifadhiwa kabla ya kugusa chochote.
+2. `extend_extent()` mpya inajaribu kwanza kukuza extent pale pale kama sectors zinazofuata ni huru.
+3. Kama haiwezekani, `alloc_extent()` inatafuta extent mpya **bila kuachilia ya zamani**.
+4. Ikishindwa kupata nafasi, inarudisha `false` na `dir[i]` ya faili iliyopo haiguswi.
+5. Kuandika data kukishindwa, extent mpya inaachiliwa na `start`/`alloc` za zamani zinabaki.
+6. Data ikishafika salama ndipo `free_extent(old_start, old_alloc)` inaitwa, kisha `flush_meta()`.
+7. `sb.files++` inafanyika mwishoni tu, na kwa faili jipya (`is_new`) peke yake.
+
+**Thibitisha:** Kwenye disk ya 64 KiB, table inajazwa mpaka kosa litokee ("disk write failed (disk full?)"). Baada ya hapo `SELECT COUNT(*)` na kuwasha upya zinaonyesha idadi ile ile ya rows (252 kwenye jaribio). Faili jirani nalo halijaguswa. Kabla ya marekebisho, baada ya kuwasha upya ujumbe ulikuwa "no such table 'big'".
+
+### B. Statement iliyoshindwa iliacha mistari nusu (`db/engine.c`, `db/storage.c`)
+**Chanzo:** `st_insert` ilirudi na kosa baada ya kuongeza tuples za kwanza. `dirty` haikuwa imewashwa, kwa hiyo `ROLLBACK` haikuziona.
+
+**Suluhisho:**
+- `insert_tuples()` inaandika namba ya kila slot iliyoongezwa ndani ya `added[]`. Tuple yoyote ikishindwa, `undo_rows()` inaondoa zote (`row[0] = 0; nlive--`). Matokeo ni yote au hakuna.
+- Kikomo `MAX_STMT_ROWS` (64) kinahakikisha `added[]` haizidi.
+- `tbl_flush` ilikuwa inapanga rows upya kwenye RAM kabla ya kuandika kwenye disk, kwa hiyo kuandika kukishindwa RAM ilitofautiana na disk. Sasa picha ya disk inajengwa kwenye buffer tofauti, na RAM inapangwa upya baada ya mafanikio tu.
+- `tbl_discard(t)` mpya: kwenye `done_write` (na `COMMIT`), kuandika kukishindwa nakala ya RAM inatupwa ili table isomwe upya kutoka disk. RAM haiwezi tena kuwa na kitu ambacho disk haina.
+
+**Thibitisha:** `INSERT ... VALUES (2,'b'),(1,'dup')` inabaki na row 1. `BEGIN; INSERT` iliyoshindwa`; ROLLBACK;` haibakizi kitu.
+
+### C. UPDATE ilivunja PRIMARY KEY (`st_update`)
+**Chanzo:** `pk_conflict` iliitwa kwenye INSERT tu.
+
+**Suluhisho:** UPDATE ina hatua mbili:
+- **Pass 1 (kukagua):** inahesabu rows zinazolingana na WHERE (`matches`). Kama SET inagusa column ya PK na `matches > 1`, ni kosa, kwa sababu rows nyingi zingepata key moja. Kama `matches == 1`, thamani mpya inakaguliwa kwa `pk_conflict(t, only, col, val)`, ambapo row yenyewe (`only`) inarukwa ili isigongane na yenyewe.
+- **Pass 2 (kutumia):** rows zinabadilishwa tu baada ya ukaguzi wote kupita. UPDATE nayo sasa ni yote au hakuna.
+
+**Thibitisha:** `UPDATE t SET id = 1 WHERE id = 7` inakataliwa, `UPDATE t SET id = 70 WHERE id = 7` inafanikiwa, na `UPDATE t SET id = 9` (bila WHERE) inakataliwa.
+
+---
+
 ## Makosa mengine yaliyogunduliwa na kurekebishwa
 
 | Sehemu | Kosa | Suluhisho |
@@ -138,4 +178,4 @@ Mstari wa boot unaonyesha: `heap 8 MiB at 0x...-0x... (locked, inside map)`. Tum
 - Programu za ELF bado zimewekwa ndani ya kernel image (`incbin`). Kuzipakia kutoka VKFS ni kazi ya v0.3.
 - Hakuna `fork`/`exec` bado, na syscalls za faili hazipo kwa user.
 - Hakuna ASLR, NX bit (inahitaji PAE) wala stack canaries za compiler.
-- VukangDB bado haina journal (WAL) ya kulinda data umeme ukikatika.
+- VukangDB bado haina journal (WAL). Disk ikijaa data iko salama (v0.2.2), lakini umeme ukikatika au disk ikishindwa wakati faili linaandikwa pale pale (bila kuhamishwa), sehemu ya faili inaweza kuharibika. WAL ni kazi ya v0.3.

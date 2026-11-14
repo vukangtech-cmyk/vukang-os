@@ -4,3 +4,4 @@
 set -e
 cd "$(dirname "$0")/.."
 python3 scripts/qemu_test.py
+python3 scripts/integrity_test.py build/vukang.kernel
