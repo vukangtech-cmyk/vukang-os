@@ -11,7 +11,7 @@ Kernel, GDT/IDT/TSS, paging, heap, scheduler, syscalls, ring 3, drivers 7, VKFS,
 - [x] Heap yenye ukaguzi wa overflow, canary na pointer validation
 - [x] Mpangilio salama wa kuwaka na ukaguzi wa heap dhidi ya RAM na ramani
 - [x] Ukaguzi wa VKFS, ATA na VukangDB dhidi ya data iliyoharibika
-- [x] `security`, `selftest`, checks 26 za CI
+- [x] `security`, `selftest`, checks 30 za CI
 
 ## v0.3.0 "Ngorongoro": Programu halisi na database yenye nguvu
 - [ ] ELF loader: programu za nje kutoka VKFS

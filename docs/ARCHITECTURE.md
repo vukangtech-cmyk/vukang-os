@@ -121,6 +121,14 @@ Database ndani ya OS. Ina tabaka tatu:
 **Mfano wa safari ya query** `SELECT jina FROM wanafunzi WHERE alama > 80 ORDER BY alama DESC`:
 lexer → parser inatambua SELECT → `tbl_open` inapakia table (kutoka cache au VKFS → ATA) → kila row inapimwa na WHERE → rows zinapangwa (insertion sort) → jedwali linachorwa kwenye skrini.
 
+## 7b. Skrini na boot animation: `drivers/fb.c`, `drivers/vga.c`, `kernel/splash.c`
+
+- **Ombi la video:** Multiboot header (`boot/boot.asm`) ina bit 2 ya flags na inaomba 1024x768x32. GRUB inaweka framebuffer na kutupa anwani yake ndani ya `multiboot_info`.
+- **`fb.c`:** `fb_probe` inakubali framebuffer ya RGB tu (bpp 16/24/32) yenye vipimo vya kweli. Kama iko nje ya ramani ya kernel inawekwa kwenye `FB_VIRT = 0xC0000000` kama kurasa za **supervisor-only** (write-through); vinginevyo frames zake zinafungwa kwenye PMM. `vmm_create_space` inanakili PDE za juu ya `USER_END`, kwa hiyo kila process inaiona kernel (na framebuffer) lakini haiwezi kuigusa kutoka ring 3.
+- **`vga.c`:** console yenye backend mbili. Herufi zote zinakaa kwenye **shadow cells**; backend ya text inaandika `0xB8000`, backend ya framebuffer inachora kila herufi kwa font ya 10x20 (Terminus Bold, `assets/font/`). Damage tracking (`shown[]`) inachora upya seli zilizobadilika tu, kwa hiyo scroll na saa ni za haraka. Palette ya rangi 16 ni ya kisasa (mandharinyuma `0x080B10`, cyan `0x3FE0F0`). `vga_hold()` inazuia kuchora wakati animation inaendelea, kisha `vga_redraw()` inaonyesha log nzima ya kuwaka.
+- **`splash.c`:** back buffer (karibu MB 1.3 kwenye heap) inachorwa kila frame kisha inanakiliwa kwenye framebuffer. Tabaka: chembe 56 za mwanga zinazopanda, nembo ya "V" inayokuza kutoka 0.81 hadi 1.0 na kung'aa kama inapumua, jina "VUKANG" linalopanda na kuonekana polepole, progress bar ya gradient yenye mwanga unaosogea, maandishi ya hatua, mstari wa toleo, mwanga unaopita juu ya nembo, na fade-out. Progress inafuata hatua halisi za `kmain` (`splash_step`): 40 kernel, 60 storage, 80 VKFS, 95 VukangDB. Kitufe chochote kinaruka animation, `panic` inaita `splash_abort`, na bila framebuffer kuna toleo la text (jina + bar ya blocks).
+- **Assets:** `kernel/assets.asm` inaweka `console.vkfont`, `emblem.vkimg` na `wordmark.vkimg` ndani ya kernel kwa `incbin`. Muundo wa `.vkimg`: `"VKIM"`, upana na urefu (u16), kisha pixels za RGB.
+
 ## 8. Shell: `shell/shell.c`
 
 Jedwali la amri (`commands[]`): kila amri ina jina, maelezo na function. Kuongeza amri mpya ni kuongeza mstari mmoja tu. `clockd` ni task ya nyuma (daemon) inayoonyesha saa kona ya juu kulia. Hiyo ni ushahidi wa multitasking unaoonekana kwa macho.
@@ -129,7 +137,7 @@ Jedwali la amri (`commands[]`): kila amri ina jina, maelezo na function. Kuongez
 
 - `selftest`: majaribio 23 ndani ya kernel (PMM, heap, paging).
 - `security`: programu 6 za ring 3 zinazoshambulia kernel.
-- `make test`: checks 26 kupitia serial console ya QEMU, pamoja na leak ya frames, persistence ya disk, directory entry mbovu na superblock ya uongo.
+- `make test`: checks 30 kupitia serial console ya QEMU, pamoja na leak ya frames, persistence ya disk, directory entry mbovu na superblock ya uongo.
 
 ## Mipaka ya sasa (kwa uwazi)
 

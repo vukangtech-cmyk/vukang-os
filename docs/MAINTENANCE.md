@@ -6,7 +6,7 @@ Hivi ndivyo tutakavyoendeleza mradi kwa nidhamu.
 
 1. `main` ni tawi linalofanya kazi siku zote. Majaribio lazima yapite.
 2. Kila kipengele kipya kinafanyika kwenye tawi lake: `feature/b-tree-index`, `fix/ata-timeout`.
-3. Unafungua Pull Request. GitHub Actions inajenga ISO na kuendesha checks 26 kiotomatiki (pamoja na `selftest` na `security`).
+3. Unafungua Pull Request. GitHub Actions inajenga ISO na kuendesha checks 30 kiotomatiki (pamoja na `selftest` na `security`).
 4. Una-merge PR baada ya CI kuwa kijani.
 
 ```bash
@@ -48,6 +48,25 @@ static void c_hello(char *a) { kprintf("Habari %s\n", a); }
 2. Ongeza `case` ndani ya `syscall_dispatch`.
 3. Kila pointer kutoka user lazima ikaguliwe kwa `vmm_user_range_ok()` / `vmm_user_strlen()` kabla ya kuisoma; rudisha `-EFAULT` kama si halali.
 4. Andika programu ya ring 3 inayoitumia, na jaribio kwenye `scripts/qemu_test.py`.
+
+## Boot animation: kuipima na kuibadilisha
+
+Animation hii itatumika kwenye matoleo yote mpaka tuamue kubadilisha picha.
+
+**Kuipima:**
+- `make run`: chagua `VUKANG OS` kwenye menu ya GRUB. Animation inachukua takriban sekunde 3.5, kisha console inaonekana.
+- Bonyeza kitufe chochote wakati wa animation: inarukwa mara moja.
+- Chaguo `bila animation (nosplash)` na `text mode` lazima zifike kwenye shell bila tatizo.
+- Ndani ya log ya kuwaka (au `make run-serial`) tafuta mstari `splash boot animation: N frames in M ms (X fps)`.
+- `make test` ina checks 4 za display: framebuffer console, animation imecheza, text mode, na nosplash.
+
+**Kubadilisha picha (kwa toleo la baadaye):**
+1. Weka picha mpya kwenye `assets/splash/logo.jpg` (mandharinyuma meusi ni bora).
+2. Rekebisha crop boxes za `emblem` na `wordmark` ndani ya `tools/mksplash.py` kama nafasi za nembo zimebadilika.
+3. `make splash` (inahitaji Python Pillow: `pip install pillow`). Itatengeneza upya `emblem.vkimg` na `wordmark.vkimg`.
+4. `make run` kuangalia, kisha commit picha na `.vkimg` pamoja.
+
+Muda, rangi na idadi ya chembe ziko juu ya `kernel/splash.c`. Font inabadilishwa kwa `make font` (`tools/mkfont.py`, inasoma font ya PSF).
 
 ## Kanuni za usalama wa memory
 

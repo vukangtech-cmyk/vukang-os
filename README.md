@@ -3,6 +3,8 @@
 **Mfumo wa uendeshaji (Operating System) halisi, uliojengwa kuanzia sifuri kwa C na Assembly, wenye database (SQL) iliyojengwa ndani yake.**
 Imetengenezwa Tanzania na VukangTech.
 
+![Boot animation ya VUKANG OS](docs/images/00-boot-animation.gif)
+
 ![VUKANG OS ikiwaka](docs/images/01-boot.png)
 
 VUKANG OS haitumii Linux, Windows wala maktaba (library) yoyote ya nje. Kila kitu ni chetu: bootloader entry, kernel, memory manager, scheduler, drivers, filesystem, database engine na shell. Inawaka kwenye kompyuta halisi ya x86 au kwenye emulator (QEMU, VirtualBox).
@@ -17,7 +19,9 @@ VUKANG OS haitumii Linux, Windows wala maktaba (library) yoyote ya nje. Kila kit
 | Processes | Kila programu ina **address space yake** (page directory yake), ELF loader, stack yenye guard page, `run`, `ps`, `kill`, Ctrl+C |
 | Multitasking | Preemptive round-robin scheduler kwa 100 Hz, idle task, `spawn`, `sleep` |
 | Usalama | Ring 0 / ring 3, kurasa za kernel hazifikiwi na user, syscalls zinakagua kila pointer (`-EFAULT`), programu mbaya inauawa peke yake. `security` inaendesha mashambulizi 6 |
-| Drivers | VGA text, PS/2 keyboard, serial COM1, PIT timer, CMOS RTC (saa), ATA hard disk, PC speaker, reboot/shutdown |
+| Boot animation | Skrini ya kuwaka yenye motion: nembo ya "V" inakuza na kung'aa, jina linapanda, chembe za mwanga, na progress bar inayofuata hatua halisi za kuwaka. Kitufe chochote kinairuka |
+| Display | Framebuffer ya 1024x768 (32-bit) yenye font ya 10x20 (console ya 102x38), au VGA text mode kwa kompyuta za zamani |
+| Drivers | Framebuffer, VGA text, PS/2 keyboard, serial COM1, PIT timer, CMOS RTC (saa), ATA hard disk, PC speaker, reboot/shutdown |
 | Filesystem | **VKFS**, filesystem yetu wenyewe kwenye hard disk au RAM disk |
 | Database | **VukangDB**, SQL engine ndani ya OS: tables, PRIMARY KEY, WHERE, ORDER BY, LIMIT, COUNT/SUM/AVG/MIN/MAX, UPDATE, DELETE, transactions (BEGIN/COMMIT/ROLLBACK), data inabaki baada ya kuzima |
 | Shell | **VKSH**: amri 29, pamoja na `demo`, `security` na `selftest` kwa presentation |
@@ -32,8 +36,10 @@ git clone https://github.com/vukangtech-cmyk/vukang-os.git
 cd vukang-os
 make run          # inafungua dirisha la QEMU
 make run-serial   # bila dirisha, shell ndani ya terminal (toka: Ctrl+A kisha X)
-make test         # majaribio ya kiotomatiki (26 checks)
+make test         # majaribio ya kiotomatiki (30 checks)
 ```
+
+Menu ya GRUB ina chaguo 3: `VUKANG OS` (pamoja na animation), `bila animation` (`nosplash`) na `text mode` kwa kompyuta za zamani.
 
 Faili `build/vukang-os.iso` linaweza kuwashwa kwenye VirtualBox, au kuandikwa kwenye USB na kuwashwa kwenye kompyuta halisi yenye BIOS/Legacy boot.
 
@@ -62,9 +68,9 @@ vukang:~$ mem           # RAM, heap, paging na frees zilizokataliwa
 
 ```
 boot/        Multiboot entry (assembly)
-kernel/      kmain, selftest, arch/ (GDT, IDT, ISR, timer), mm/ (pmm, paging, heap), proc/ (tasks, ELF loader, programs, syscalls)
+kernel/      kmain, splash (boot animation), assets, selftest, arch/ (GDT, IDT, ISR, timer), mm/ (pmm, paging, heap), proc/ (tasks, ELF loader, programs, syscalls)
 user/        programu za ring 3 (hello, counter, attack_*, spin) + ulib + linker script
-drivers/     vga, serial, keyboard, rtc, ata, power
+drivers/     fb (framebuffer), vga (console), serial, keyboard, rtc, ata, power
 fs/          blockdev + VKFS
 db/          VukangDB: lexer, storage engine, SQL engine
 shell/       VKSH shell
@@ -72,6 +78,8 @@ lib/         string + kprintf
 include/     headers
 docs/        nyaraka (Kiswahili)
 scripts/     majaribio ya kiotomatiki
+assets/      picha za boot animation (splash/) na font ya console (font/)
+tools/       mksplash.py na mkfont.py: zinatengeneza assets
 ```
 
 ## Nyaraka

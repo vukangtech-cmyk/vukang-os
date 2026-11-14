@@ -5,6 +5,7 @@
 #include "console.h"
 #include "string.h"
 #include "vga.h"
+#include "fb.h"
 #include "arch.h"
 #include "mm.h"
 #include "task.h"
@@ -50,6 +51,8 @@ static void c_about(char *a) {
     color(VGA_LGREY);
     kprintf("                     Memory  : %u KiB RAM, paging on, 8 MiB heap\n", pmm_mem_kb());
     kprintf("                     Storage : %s\n", blockdev_get()->name);
+    if (vga_is_graphics()) kprintf("                     Display : %ux%u framebuffer, %d bpp, %dx%d console\n", fb.width, fb.height, fb.bpp, vga_cols(), vga_rows());
+    else                   kprintf("                     Display : VGA text mode 80x25\n");
     kprintf("                     FS / DB : VKFS + VukangDB (SQL)\n");
     kprintf("                     Uptime  : %u s   Date: %04d-%02d-%02d\n", timer_ticks() / timer_hz(), t.year, t.month, t.day);
     kprintf("                     Author  : VukangTech - Dar es Salaam, Tanzania\n");
@@ -117,11 +120,12 @@ static void c_kill(char *a) {
 }
 static void clockd(void *arg) {           /* background daemon: live clock in top-right corner */
     (void)arg;
-    volatile uint16_t *vga = (uint16_t *)0xB8000;
     for (;;) {
         rtc_time_t t; rtc_read(&t);
         char buf[12]; ksnprintf(buf, sizeof buf, " %02d:%02d:%02d ", t.hour, t.minute, t.second);
-        for (int i = 0; buf[i]; i++) vga[70 + i] = (uint16_t)buf[i] | ((VGA_BLACK | (VGA_LCYAN << 4)) << 8);
+        uint32_t f = irq_save();
+        vga_write_at(vga_cols() - 10, 0, buf, VGA_BLACK | (VGA_LCYAN << 4));
+        irq_restore(f);
         task_sleep(500);
     }
 }

@@ -5,6 +5,8 @@
  *                               page 0 is unmapped to catch NULL dereferences
  *   0x40000000 - 0x7FFFFFFF     user space, private to each process (PG_USER)
  *   0x7FFFB000 - 0x7FFFEFFF     user stack (4 pages), 0x7FFFF000 = guard page
+ *   0xC0000000 - ...            framebuffer window (if it lies outside the
+ *                               identity map), SUPERVISOR ONLY
  *
  * The kernel page tables are built once and shared by every page directory,
  * so kernel memory is identical everywhere but unreachable from ring 3.
@@ -13,6 +15,7 @@
 #include "string.h"
 #include "kernel.h"
 #include "io.h"
+#include "fb.h"
 
 #define PD_INDEX(va) ((va) >> 22)
 #define PT_INDEX(va) (((va) >> 12) & 0x3FF)
@@ -40,6 +43,30 @@ void paging_init(void) {
     }
     ((uint32_t *)FRAME(kernel_pd[0]))[0] = 0;     /* unmap page 0 (NULL guard) */
 
+    /* Framebuffer: identity-mapped already if it sits inside the kernel map,
+     * otherwise mapped (supervisor-only) at FB_VIRT. Its page tables are
+     * created now so every process directory shares them. */
+    if (fb.present) {
+        if (fb.phys + fb.size <= kernel_limit) {
+            pmm_reserve_range(fb.phys, fb.phys + fb.size);   /* never hand out VRAM as RAM */
+        } else {
+            uint32_t pa0 = fb.phys & ~0xFFFu, pages = (fb.phys - pa0 + fb.size + 0xFFF) >> 12;
+            if (FB_VIRT + (pages << 12) < FB_VIRT) PANIC("framebuffer too large");
+            for (uint32_t i = 0; i < pages; i++) {
+                uint32_t va = FB_VIRT + (i << 12);
+                if (!(kernel_pd[PD_INDEX(va)] & PG_PRESENT)) {
+                    uint32_t *pt = (uint32_t *)pmm_alloc_zero();
+                    if (!pt) PANIC("no memory for framebuffer page tables");
+                    pmm_lock((uint32_t)pt);
+                    kernel_pd[PD_INDEX(va)] = (uint32_t)pt | PG_PRESENT | PG_WRITE;
+                }
+                ((uint32_t *)FRAME(kernel_pd[PD_INDEX(va)]))[PT_INDEX(va)] =
+                    (pa0 + (i << 12)) | PG_PRESENT | PG_WRITE | 0x008 /* write-through */;
+            }
+            fb_set_base(FB_VIRT + (fb.phys - pa0));
+        }
+    }
+
     __asm__ volatile("mov %0, %%cr3" :: "r"(kernel_pd));
     uint32_t cr0; __asm__ volatile("mov %%cr0, %0" : "=r"(cr0));
     cr0 |= 0x80000000u | 0x00010000u;             /* PG + WP (honour read-only pages in ring 0 too) */
@@ -55,6 +82,7 @@ uint32_t vmm_create_space(void) {
     uint32_t *pd = (uint32_t *)pmm_alloc_zero();
     if (!pd) return 0;
     for (uint32_t i = 0; i < kernel_tables; i++) pd[i] = kernel_pd[i];   /* share kernel tables */
+    for (uint32_t i = PD_INDEX(USER_END); i < 1024; i++) pd[i] = kernel_pd[i]; /* kernel high window */
     return (uint32_t)pd;
 }
 
