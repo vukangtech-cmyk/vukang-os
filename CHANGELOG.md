@@ -1,6 +1,18 @@
 # Changelog
 
-## [0.2.0] "Serengeti" - 2026-11-14
+## [0.2.1] "Serengeti" - 2026-11-14
+Toleo la sura mpya: boot animation na console ya graphics.
+
+### Imeongezwa
+- Boot animation ya kisasa yenye motion, inayotumia nembo rasmi ya VUKANG: nembo inakuza na kung'aa, jina linapanda, chembe za mwanga, progress bar inayofuata hatua halisi za kuwaka, na fade-out. Takriban fps 98 kwenye QEMU
+- Kitufe chochote kinaruka animation; chaguo la GRUB `nosplash`; text mode kwa kompyuta zisizo na framebuffer
+- Framebuffer driver (`drivers/fb.c`), 1024x768x32, imewekwa supervisor-only
+- Console mpya ya graphics: font ya 10x20 (Terminus Bold, SIL OFL 1.1), 102x38, palette ya kisasa, damage tracking
+- Menu ya GRUB yenye graphics na chaguo 3
+- `tools/mksplash.py`, `tools/mkfont.py`, `make splash`, `make font`
+- `make test` checks 30 (4 mpya za display)
+
+ "Serengeti" - 2026-11-14
 Toleo la usalama na uimara. Maelezo kamili: [docs/SECURITY.md](docs/SECURITY.md).
 
 ### Usalama

@@ -28,7 +28,7 @@ USER_ELFS  := $(patsubst %,$(BUILD)/user/%.elf,$(USER_PROGS))
 PROG_ASM   := $(BUILD)/user/programs.asm
 OBJ        += $(BUILD)/user/programs.asm.o
 
-.PHONY: all iso run run-serial disk clean test
+.PHONY: all iso run run-serial disk clean test splash font
 
 all: $(KERNEL)
 
@@ -63,6 +63,10 @@ $(PROG_ASM): $(USER_ELFS)
 $(BUILD)/user/programs.asm.o: $(PROG_ASM)
 	@$(AS) $(ASFLAGS) $< -o $@
 
+# binary assets (font + boot splash) are pulled in with incbin
+ASSETS := $(wildcard assets/font/*.vkfont assets/splash/*.vkimg)
+$(BUILD)/kernel/assets.asm.o: kernel/assets.asm $(ASSETS)
+
 $(KERNEL): $(OBJ) linker.ld
 	@echo "  LD   $@"
 	@$(LD) $(LDFLAGS) -o $@ $(OBJ)
@@ -78,6 +82,12 @@ iso: $(KERNEL)
 disk:
 	@mkdir -p $(BUILD)
 	@test -f $(DISK) || (dd if=/dev/zero of=$(DISK) bs=1M count=16 status=none && echo "  DISK $(DISK) (16 MiB)")
+
+# Regenerate the splash layers / console font from their sources (needs Pillow)
+splash:
+	@python3 tools/mksplash.py
+font:
+	@python3 tools/mkfont.py
 
 # Graphical window (VGA) + serial log on terminal
 run: iso disk

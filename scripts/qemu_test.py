@@ -6,12 +6,17 @@ ISO, DISK = "build/vukang-os.iso", "build/disk.img"
 if not os.path.exists(DISK):
     subprocess.run(["dd", "if=/dev/zero", f"of={DISK}", "bs=1M", "count=16", "status=none"], check=True)
 
-def boot():
+def boot(kernel_args=None):
+    """Boot the ISO through GRUB (graphics + animation), or - with kernel_args -
+    load the kernel directly with QEMU's Multiboot loader, which gives no
+    framebuffer: this exercises the VGA text-mode fallback."""
     global out
     out = b""
+    media = ["-cdrom", ISO, "-boot", "d"] if kernel_args is None else \
+            ["-kernel", "build/vukang.kernel", "-append", kernel_args]
     return subprocess.Popen(
-        ["qemu-system-i386", "-m", "128M", "-cdrom", ISO,
-         "-drive", f"file={DISK},format=raw,index=0,media=disk", "-boot", "d",
+        ["qemu-system-i386", "-m", "128M"] + media +
+        ["-drive", f"file={DISK},format=raw,index=0,media=disk",
          "-display", "none", "-serial", "stdio", "-monitor", "none", "-no-reboot"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
@@ -48,7 +53,10 @@ def check(name, cond):
 p = boot()
 assert read_until(p, "vukang:~$ ", 30), "shell prompt never appeared:\n" + out.decode(errors="replace")
 print(out.decode(errors="replace"))
+bootlog = out.decode(errors="replace")
 check("boot to shell", True)
+check("framebuffer console (graphics mode)", "32-bit framebuffer" in bootlog)
+check("boot animation played", "boot animation:" in bootlog and "fps" in bootlog)
 check("mem", "Heap" in cmd(p, "mem"))
 check("file write/read", "Habari" in (cmd(p, "write test.txt Habari dunia") + cmd(p, "cat test.txt")))
 cmd(p, "sql DROP TABLE t")
@@ -113,6 +121,16 @@ with open(DISK, "r+b") as f:
 p = boot()
 ok = read_until(p, "vukang:~$ ", 30)
 check("malicious superblock rejected safely", ok and "formatted new VKFS" in out.decode(errors="replace"))
+p.kill(); p.wait()
+
+# No framebuffer (old PC / text-mode GRUB entry): text console + text splash
+p = boot("")
+ok = read_until(p, "vukang:~$ ", 30); log = out.decode(errors="replace")
+check("text-mode fallback boots", ok and "VGA text mode 80x25" in log and "boot animation:" in log)
+p.kill(); p.wait()
+p = boot("nosplash")
+ok = read_until(p, "vukang:~$ ", 30); log = out.decode(errors="replace")
+check("nosplash skips the animation", ok and "boot animation:" not in log)
 p.kill()
 
 failed = [n for n, c in checks if not c]

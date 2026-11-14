@@ -1,11 +1,14 @@
 #ifndef VK_KERNEL_H
 #define VK_KERNEL_H
 #define VUKANG_NAME    "VUKANG OS"
-#define VUKANG_VERSION "0.2.0"
+#define VUKANG_VERSION "0.2.1"
 #define VUKANG_CODENAME "Serengeti"
 void panic(const char *msg, const char *file, int line) __attribute__((noreturn));
 #define PANIC(m) panic(m, __FILE__, __LINE__)
 #define ASSERT(c) do { if (!(c)) panic("ASSERT: " #c, __FILE__, __LINE__); } while (0)
 void shell_run(void);
 void klog(const char *tag, const char *fmt, ...);
+#include <stdbool.h>
+bool kernel_arg(const char *name);       /* is <name> on the kernel command line? */
+const char *kernel_cmdline(void);
 #endif

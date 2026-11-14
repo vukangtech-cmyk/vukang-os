@@ -6,7 +6,7 @@ Kila suluhisho lina njia tatu za kuthibitisha:
 
 - **`security`**: amri ya shell inayoendesha programu 6 za ring 3 zinazojaribu kushambulia kernel. Zote lazima zizuiwe ("6/6 protections held").
 - **`selftest`**: majaribio 23 yanayokimbia ndani ya kernel yenyewe dhidi ya PMM, heap na paging ("23 passed, 0 failed").
-- **`make test`**: majaribio 26 ya kiotomatiki yanayowasha OS ndani ya QEMU (pia yanaendeshwa na GitHub Actions kwa kila PR).
+- **`make test`**: majaribio 30 ya kiotomatiki yanayowasha OS ndani ya QEMU (pia yanaendeshwa na GitHub Actions kwa kila PR).
 
 ---
 
@@ -40,6 +40,8 @@ Kwenye v0.1 RAM yote iliwekwa identity map ikiwa na bit ya `PG_USER`. CPU ilizui
 `selftest`: "kernel pages are supervisor-only", "NULL page unmapped", "refuse PG_USER on kernel range", "map user page in private space", "user page invisible to kernel dir", "destroying space frees its frames".
 
 ![security](images/05-security.png)
+
+Tangu v0.2.1 framebuffer ya graphics nayo imewekwa kama kurasa za supervisor-only (`FB_VIRT = 0xC0000000`), kwa hiyo programu ya ring 3 haiwezi kuchora juu ya skrini wala kusoma kilichopo.
 
 ---
 
