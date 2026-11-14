@@ -39,6 +39,19 @@ make run-serial   # bila dirisha, shell ndani ya terminal (toka: Ctrl+A kisha X)
 make test         # majaribio ya kiotomatiki (30 checks)
 ```
 
+### Kuendesha toleo lolote (v0.1.0, v0.2.0, v0.2.1 ...)
+
+```bash
+make versions                    # orodha ya matoleo yote
+make run-version V=v0.1.0        # washa v0.1.0 "Kilimanjaro"
+make run-version V=v0.2.0        # washa v0.2.0 "Serengeti"
+make run-version                 # toleo jipya kabisa (latest)
+make run-serial-version V=v0.1.0 # bila dirisha
+make clean-versions              # futa matoleo yaliyojengwa
+```
+
+Kila toleo linajengwa ndani ya folda yake (`build/versions/<toleo>`) likiwa na disk yake, kwa hiyo matoleo hayaingiliani. `make run` ya kawaida inaendelea kuwasha msimbo ulio kwenye tawi lako la sasa.
+
 Menu ya GRUB ina chaguo 3: `VUKANG OS` (pamoja na animation), `bila animation` (`nosplash`) na `text mode` kwa kompyuta za zamani.
 
 Faili `build/vukang-os.iso` linaweza kuwashwa kwenye VirtualBox, au kuandikwa kwenye USB na kuwashwa kwenye kompyuta halisi yenye BIOS/Legacy boot.
