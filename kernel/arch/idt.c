@@ -5,6 +5,7 @@
 #include "kernel.h"
 #include "task.h"
 #include "vga.h"
+#include "mm.h"
 
 typedef struct { uint16_t base_lo, sel; uint8_t zero, flags; uint16_t base_hi; } __attribute__((packed)) idt_entry_t;
 typedef struct { uint16_t limit; uint32_t base; } __attribute__((packed)) idt_ptr_t;
@@ -14,8 +15,6 @@ static irq_handler_t irq_handlers[16];
 extern uint32_t isr_stub_table[48];
 extern void isr128(void);
 extern uint32_t syscall_dispatch(regs_t *r);
-extern int usermode_active;
-extern void usermode_return(int code) __attribute__((noreturn));
 
 static const char *exc_names[32] = {
     "Division By Zero", "Debug", "Non Maskable Interrupt", "Breakpoint", "Overflow",
@@ -51,11 +50,20 @@ void idt_init(void) {
     __asm__ volatile("lidt %0" :: "m"(ip));
 }
 
-static void exception(regs_t *r) {
+static uint32_t exception(regs_t *r) {
     uint32_t cr2; __asm__ volatile("mov %%cr2,%0" : "=r"(cr2));
-    if ((r->cs & 3) == 3 && usermode_active) {          /* fault in user program: kill it, keep OS alive */
-        kprintf("\n[user] %s at eip=%p (cr2=%p) - program terminated\n", exc_names[r->int_no], r->eip, cr2);
-        usermode_return(-1);
+    if ((r->cs & 3) == 3) {            /* fault in a user process: kill only that process */
+        task_t *t = task_current();
+        uint8_t c = vga_get_color(); vga_set_color(VGA_LRED, VGA_BLACK);
+        kprintf("\n[pid %d %s] %s", t->pid, t->name, exc_names[r->int_no]);
+        if (r->int_no == 14)
+            kprintf(": %s %s address %p (%s)", ((r->err_code & 0x10) || r->eip == cr2) ? "execute at" : (r->err_code & 2) ? "write to" : "read from",
+                    cr2 < USER_BASE ? "KERNEL" : "user", cr2,
+                    (r->err_code & 1) ? "page is supervisor-only / protected" : "page not mapped");
+        kprintf(" at eip=%p -> process killed\n", r->eip);
+        vga_set_color(c & 0x0F, c >> 4);
+        task_mark_dead(r->int_no == 14 ? EXIT_PAGEFAULT : r->int_no == 13 ? EXIT_GPF : EXIT_FAULT);
+        return schedule(r);
     }
     vga_set_color(VGA_WHITE, VGA_RED);
     kprintf("\n\n*** VUKANG OS KERNEL EXCEPTION ***\n");
@@ -63,11 +71,11 @@ static void exception(regs_t *r) {
     kprintf(" EIP=%p CS=%x EFLAGS=%x CR2=%p\n", r->eip, r->cs, r->eflags, cr2);
     kprintf(" EAX=%p EBX=%p ECX=%p EDX=%p\n", r->eax, r->ebx, r->ecx, r->edx);
     kprintf(" ESI=%p EDI=%p EBP=%p\n", r->esi, r->edi, r->ebp);
-    PANIC("unhandled CPU exception");
+    PANIC("unhandled CPU exception in kernel mode");
 }
 
 uint32_t interrupt_dispatch(regs_t *r) {
-    if (r->int_no < 32) { exception(r); return (uint32_t)r; }
+    if (r->int_no < 32) return exception(r);
     if (r->int_no == 0x80) return syscall_dispatch(r);
     int irq = r->int_no - 32;
     pic_eoi(irq);

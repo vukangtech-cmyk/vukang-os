@@ -7,6 +7,8 @@ if not os.path.exists(DISK):
     subprocess.run(["dd", "if=/dev/zero", f"of={DISK}", "bs=1M", "count=16", "status=none"], check=True)
 
 def boot():
+    global out
+    out = b""
     return subprocess.Popen(
         ["qemu-system-i386", "-m", "128M", "-cdrom", ISO,
          "-drive", f"file={DISK},format=raw,index=0,media=disk", "-boot", "d",
@@ -61,7 +63,25 @@ check("sql txn rollback", "COUNT = 3" in cmd(p, "sql BEGIN; DELETE FROM t; ROLLB
 check("ps", "clockd" in cmd(p, "ps"))
 check("spawn", "spawned" in cmd(p, "spawn 2"))
 time.sleep(4)
-check("usermode", "Kernel survived" in cmd(p, "usermode", timeout=30))
+check("kernel selftest 23/23", "23 passed, 0 failed" in cmd(p, "selftest"))
+check("user process (private address space)", "exited with code 42" in cmd(p, "run hello", timeout=15))
+s = cmd(p, "security", timeout=40)
+check("security suite 6/6 attacks blocked", "6/6 protections held" in s)
+check("kernel memory read blocked", "read from KERNEL address 0x00100000" in s)
+import re
+def free_kib():
+    m = re.search(r"(\d+) KiB free", cmd(p, "mem")); return int(m.group(1)) if m else -1
+before = free_kib()
+for _ in range(10): cmd(p, "run attack_read", timeout=10)
+cmd(p, "run hello", timeout=15)
+check("no frame leak after 11 processes", before > 0 and free_kib() == before)
+s = cmd(p, "run spin &")
+pid = re.search(r"\[(\d+)\] spin started", s)
+check("background process preempted", pid is not None and "spin" in cmd(p, "ps"))
+if pid: cmd(p, f"kill {pid.group(1)}")
+time.sleep(0.5)
+check("kill background process", "spin" not in cmd(p, "ps"))
+check("heap integrity after stress", "integrity ok" in cmd(p, "mem"))
 check("error handling", "SQL error" in cmd(p, "sql SELEC * FROM t"))
 p.stdin.write(b"halt\r"); p.stdin.flush()
 try: p.wait(10)
@@ -72,8 +92,30 @@ p = boot()
 assert read_until(p, "vukang:~$ ", 30)
 check("persistence: file", "Habari" in cmd(p, "cat test.txt"))
 check("persistence: table", "99" in cmd(p, "sql SELECT * FROM t WHERE name = 'Juma'"))
+p.kill(); p.wait()
+
+# Corrupt a directory entry on disk: kernel must detect it, not crash
+import struct
+with open(DISK, "r+b") as f:
+    f.seek(512); sb = f.read(64)
+    magic, ver, total, bstart, bsec, dstart, dat, files = struct.unpack("<8I", sb[:32])
+    f.seek(dstart * 512 + 63 * 64)                    # last directory slot
+    f.write(b"evil.bin".ljust(40, b"\0") + struct.pack("<6I", 10**6, 0xFFFFFF00, 0x7FFFFFFF, 0, 1, 0))
+p = boot()
+ok = read_until(p, "vukang:~$ ", 30)
+check("corrupted dir entry repaired at mount", ok and "removed 1 corrupted" in out.decode(errors="replace"))
+check("good data survived corruption", "Habari" in cmd(p, "cat test.txt"))
+p.kill(); p.wait()
+
+# Corrupt the superblock geometry (would overflow the bitmap): must refuse to mount
+with open(DISK, "r+b") as f:
+    f.seek(512 + 16); f.write(struct.pack("<I", 99999))
+p = boot()
+ok = read_until(p, "vukang:~$ ", 30)
+check("malicious superblock rejected safely", ok and "formatted new VKFS" in out.decode(errors="replace"))
 p.kill()
 
 failed = [n for n, c in checks if not c]
 print(f"\n{len(checks) - len(failed)}/{len(checks)} checks passed")
+os.remove(DISK)
 sys.exit(1 if failed else 0)

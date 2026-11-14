@@ -45,6 +45,7 @@ bool ata_init(void) {
     uint16_t id[256];
     for (int i = 0; i < 256; i++) id[i] = inw(ATA_DATA);
     total = id[60] | ((uint32_t)id[61] << 16);
+    if (total > 0x0FFFFFFFu) total = 0x0FFFFFFFu;
     for (int i = 0; i < 20; i++) { model[i * 2] = id[27 + i] >> 8; model[i * 2 + 1] = id[27 + i] & 0xFF; }
     model[40] = 0;
     for (int i = 39; i >= 0 && model[i] == ' '; i--) model[i] = 0;
@@ -63,8 +64,12 @@ static void setup(uint32_t lba, uint8_t count, uint8_t cmd) {
     outb(ATA_LBA2, (lba >> 16) & 0xFF);
     outb(ATA_CMD, cmd);
 }
+static bool in_range(uint32_t lba, uint8_t count) {
+    uint32_t n = count ? count : 256;
+    return lba < total && n <= total - lba && lba + n <= 0x10000000u;   /* LBA28 limit */
+}
 bool ata_read(uint32_t lba, uint8_t count, void *buf) {
-    if (!present) return false;
+    if (!present || !buf || !in_range(lba, count)) return false;
     uint32_t f = irq_save();
     setup(lba, count, 0x20);
     uint16_t *p = buf;
@@ -76,7 +81,7 @@ bool ata_read(uint32_t lba, uint8_t count, void *buf) {
     return true;
 }
 bool ata_write(uint32_t lba, uint8_t count, const void *buf) {
-    if (!present) return false;
+    if (!present || !buf || !in_range(lba, count)) return false;
     uint32_t f = irq_save();
     setup(lba, count, 0x30);
     const uint16_t *p = buf;

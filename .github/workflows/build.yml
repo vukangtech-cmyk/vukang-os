@@ -11,7 +11,7 @@ jobs:
           sudo apt-get install -y nasm qemu-system-x86 grub-pc-bin grub-common xorriso mtools
       - name: Build kernel + ISO
         run: make iso
-      - name: Boot test in QEMU (16 checks)
+      - name: Boot test in QEMU (all checks)
         run: make test
       - uses: actions/upload-artifact@v4
         with:

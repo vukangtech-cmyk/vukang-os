@@ -53,11 +53,14 @@ void kmain(uint32_t magic, void *mbinfo) {
 
     gdt_init();                       klog("cpu", "GDT + TSS loaded (ring 0 / ring 3 segments)");
     idt_init();                       klog("cpu", "IDT ready: 32 exceptions, 16 IRQs, syscall int 0x80");
-    pmm_init(magic, mbinfo);          klog("memory", "%u KiB RAM detected, %u page frames", pmm_mem_kb(), pmm_total_pages());
-    heap_init();                      klog("memory", "kernel heap 8 MiB ready (kmalloc/kfree)");
-    paging_init();                    klog("memory", "paging enabled, %u MiB identity-mapped", paging_mapped_mb());
+    pmm_init(magic, mbinfo);          klog("memory", "%u KiB RAM, %u frames, kernel+BIOS+boot data locked", pmm_mem_kb(), pmm_total_pages());
+    paging_init();                    klog("memory", "paging on: %u MiB kernel map (supervisor-only), WP, NULL guard", paging_mapped_mb());
+    heap_init();
+    { uint32_t hs, he; heap_range(&hs, &he);
+                                      klog("memory", "heap %u MiB at %p-%p (locked, inside map)", (he - hs) >> 20, hs, he); }
     tasking_init();
-    syscall_init();
+    syscall_init();                   { int np = 0; for (const user_prog_t *u = user_prog_list(); u->name; u++) np++;
+                                      klog("proc", "scheduler + idle task, ELF loader, %d user programs", np); }
     timer_init(100);                  klog("timer", "PIT at 100 Hz, preemptive scheduler armed");
     keyboard_init();                  klog("input", "PS/2 keyboard + serial console");
     __asm__ volatile("sti");

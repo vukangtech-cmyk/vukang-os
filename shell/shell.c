@@ -12,6 +12,7 @@
 #include "fs.h"
 #include "db.h"
 #include "io.h"
+#include "serial.h"
 
 #define LINE 256
 typedef struct { const char *name, *args, *help; void (*fn)(char *args); } cmd_t;
@@ -55,12 +56,13 @@ static void c_about(char *a) {
 }
 static void c_mem(char *a) {
     (void)a;
-    uint32_t tot, used, blocks; heap_stats(&tot, &used, &blocks);
-    uint32_t pt = pmm_total_pages(), pu = pmm_used_pages();
-    kprintf("Physical : %u KiB total, %u KiB used, %u KiB free (%u frames of 4 KiB)\n",
-            pt * 4, pu * 4, (pt - pu) * 4, pt);
-    kprintf("Heap     : %u KiB total, %u KiB used, %u blocks\n", tot / 1024, used / 1024, blocks);
-    kprintf("Paging   : %u MiB mapped, page 0 unmapped (NULL protection)\n", paging_mapped_mb());
+    uint32_t tot, used, blocks, hs, he; heap_stats(&tot, &used, &blocks); heap_range(&hs, &he);
+    uint32_t pt = pmm_total_pages(), pf = pmm_free_pages();
+    kprintf("Physical : %u KiB total, %u KiB used, %u KiB free (%u frames)\n", pt * 4, (pt - pf) * 4, pf * 4, pt);
+    kprintf("Heap     : %u KiB at %p-%p, %u KiB used, %u blocks, integrity %s\n",
+            tot / 1024, hs, he, used / 1024, blocks, heap_check() ? "BROKEN" : "ok");
+    kprintf("Paging   : %u MiB kernel map (supervisor-only), user space %p-%p\n", paging_mapped_mb(), USER_BASE, USER_END);
+    kprintf("Rejected : %u bad frame frees, %u bad heap frees\n", pmm_rejected_frees(), heap_rejected_frees());
 }
 static void c_uptime(char *a) {
     (void)a; uint32_t s = timer_ticks() / timer_hz();
@@ -86,10 +88,11 @@ static const char *st_name(task_state_t s) {
 }
 static void c_ps(char *a) {
     (void)a; task_t *t = task_table();
-    kprintf("  PID  STATE      CPU-TICKS  NAME\n");
+    kprintf("  PID  MODE    STATE      CPU-TICKS  USER-PAGES  NAME\n");
     for (int i = 0; i < MAX_TASKS; i++)
         if (t[i].state != T_UNUSED && t[i].state != T_DEAD)
-            kprintf("  %3d  %-9s  %9u  %s\n", t[i].pid, st_name(t[i].state), t[i].cpu_ticks, t[i].name);
+            kprintf("  %3d  %-6s  %-9s  %9u  %10u  %s\n", t[i].pid, t[i].user ? "ring3" : "kernel",
+                    st_name(t[i].state), t[i].cpu_ticks, t[i].user ? vmm_user_pages(t[i].pd) : 0, t[i].name);
 }
 static void worker(void *arg) {
     uint32_t limit = (uint32_t)arg, found = 0, start = timer_ticks();
@@ -122,12 +125,58 @@ static void clockd(void *arg) {           /* background daemon: live clock in to
         task_sleep(500);
     }
 }
-static void c_usermode(char *a) { (void)a; usermode_run_demo(); }
+static void c_progs(char *a) {
+    (void)a; kprintf("User programs (ELF, run in ring 3 with a private address space):\n");
+    for (const user_prog_t *p = user_prog_list(); p->name; p++) kprintf("  %-16s %u bytes\n", p->name, p->size);
+}
+static void c_run(char *a) {
+    char *name = word(&a); int bg = !strcmp(skip(a), "&");
+    if (!name[0]) { kprintf("usage: run <program> [&]   (see 'progs')\n"); return; }
+    int pid = process_spawn(name);
+    if (pid < 0) { kprintf("run: %s: %s\n", name, pid == -1 ? "no such program" : pid == -3 ? "invalid ELF" : "out of memory"); return; }
+    if (bg) { task_detach(pid); kprintf("[%d] %s started in background\n", pid, name); return; }
+    int code, r;
+    while ((r = task_try_wait(pid, &code)) == 0) {      /* Ctrl+C kills the foreground process */
+        int c = keyboard_getc_nonblock();
+        if (c < 0 && serial_received()) c = serial_getc();
+        if (c == 3) { task_kill(pid); kprintf("^C\n"); }
+        task_sleep(20);
+    }
+    kprintf("[%d] %s exited with code %d%s\n", pid, name, code, code == EXIT_KILLED ? " (killed)" : "");
+}
+static void c_security(char *a) {
+    (void)a;
+    static const struct { const char *prog; int expect; const char *what; } tests[] = {
+        { "attack_read",    EXIT_PAGEFAULT, "read kernel memory" },
+        { "attack_write",   EXIT_PAGEFAULT, "overwrite kernel memory" },
+        { "attack_exec",    EXIT_PAGEFAULT, "execute kernel code" },
+        { "attack_vga",     EXIT_PAGEFAULT, "touch hardware memory" },
+        { "attack_cli",     EXIT_GPF,       "privileged instruction" },
+        { "attack_syscall", 0,              "leak memory via syscall" },
+    };
+    int ok = 0, n = sizeof tests / sizeof tests[0];
+    color(VGA_YELLOW); kprintf("VUKANG OS security suite: %d attacks from ring 3\n", n); color(VGA_LGREY);
+    for (int i = 0; i < n; i++) {
+        kprintf("\n(%d/%d) %s\n", i + 1, n, tests[i].what);
+        int pid = process_spawn(tests[i].prog);
+        int code = pid < 0 ? 999 : task_wait(pid);
+        int held = code == tests[i].expect;
+        ok += held;
+        color(held ? VGA_LGREEN : VGA_LRED);
+        kprintf("  => %s (exit %d)\n", held ? "BLOCKED - kernel protected" : "NOT BLOCKED", code);
+        color(VGA_LGREY);
+    }
+    color(ok == n ? VGA_LGREEN : VGA_LRED);
+    kprintf("\n%d/%d protections held. Kernel still running.\n", ok, n);
+    color(VGA_LGREY);
+}
+static void c_selftest(char *a) { (void)a; extern int kernel_selftest(void); kernel_selftest(); }
 
 /* ---------------- files ---------------- */
 static void c_ls(char *a) {
     (void)a;
     vkfs_entry_t *e = kmalloc(sizeof(vkfs_entry_t) * VKFS_MAX_FILES);
+    if (!e) { kprintf("ls: out of memory\n"); return; }
     int n = vkfs_list(e, VKFS_MAX_FILES);
     kprintf("  %-28s %8s  %s\n", "NAME", "BYTES", "MODIFIED");
     for (int i = 0; i < n; i++) {
@@ -143,7 +192,9 @@ static void c_cat(char *a) {
     int sz = vkfs_size(name);
     if (sz < 0) { kprintf("cat: %s: no such file\n", name); return; }
     char *buf = kmalloc(sz + 1);
-    vkfs_read(name, buf, sz); buf[sz] = 0;
+    if (!buf) { kprintf("cat: out of memory\n"); return; }
+    if (vkfs_read(name, buf, sz) != sz) { kprintf("cat: read error\n"); kfree(buf); return; }
+    buf[sz] = 0;
     for (int i = 0; i < sz; i++) console_putc((buf[i] >= 32 && buf[i] < 127) || buf[i] == '\n' ? buf[i] : '.');
     if (sz && buf[sz - 1] != '\n') console_putc('\n');
     kfree(buf);
@@ -152,6 +203,7 @@ static void c_write(char *a) {
     char *name = word(&a); char *text = skip(a);
     if (!name[0]) { kprintf("usage: write <file> <text>\n"); return; }
     char *buf = kmalloc(strlen(text) + 2);
+    if (!buf) { kprintf("write: out of memory\n"); return; }
     strcpy(buf, text); strcat(buf, "\n");
     kprintf(vkfs_write(name, buf, strlen(buf)) ? "wrote %s\n" : "write failed: %s\n", name);
     kfree(buf);
@@ -159,8 +211,10 @@ static void c_write(char *a) {
 static void c_append(char *a) {
     char *name = word(&a); char *text = skip(a);
     int sz = vkfs_size(name); if (sz < 0) sz = 0;
+    if (!name[0]) { kprintf("usage: append <file> <text>\n"); return; }
     char *buf = kmalloc(sz + strlen(text) + 2);
-    if (sz) vkfs_read(name, buf, sz);
+    if (!buf) { kprintf("append: out of memory\n"); return; }
+    if (sz && vkfs_read(name, buf, sz) != sz) { kprintf("append: read error\n"); kfree(buf); return; }
     memcpy(buf + sz, text, strlen(text)); buf[sz + strlen(text)] = '\n';
     vkfs_write(name, buf, sz + strlen(text) + 1);
     kfree(buf);
@@ -206,7 +260,8 @@ static void c_demo(char *a) {
     run_line("sql BEGIN; DELETE FROM wanafunzi; SELECT COUNT(*) FROM wanafunzi");
     run_line("sql ROLLBACK; SELECT COUNT(*) FROM wanafunzi");
     step("6. Multitasking");                 run_line("spawn 2"); run_line("ps");
-    step("7. User mode + memory protection"); run_line("usermode");
+    step("7. User process in its own address space"); run_line("run hello");
+    step("8. Attacks from ring 3 vs. kernel protection"); run_line("security");
     timer_sleep(1500);
     color(VGA_LCYAN); kprintf("\nDemo complete. Asanteni!\n"); color(VGA_LGREY);
 }
@@ -222,7 +277,11 @@ const cmd_t commands[] = {
     { "ps", "", "list running tasks", c_ps },
     { "spawn", "[n]", "start n background worker tasks", c_spawn },
     { "kill", "<pid>", "stop a task", c_kill },
-    { "usermode", "", "run ring-3 programs (syscalls+protection)", c_usermode },
+    { "progs", "", "list user programs (ELF)", c_progs },
+    { "run", "<prog> [&]", "start a ring-3 process", c_run },
+    { "security", "", "run 6 attacks against the kernel", c_security },
+    { "usermode", "", "alias for 'security'", c_security },
+    { "selftest", "", "kernel memory self-tests", c_selftest },
     { "ls", "", "list files on VKFS", c_ls },
     { "cat", "<file>", "show a file", c_cat },
     { "write", "<file> <text>", "create/overwrite a file", c_write },

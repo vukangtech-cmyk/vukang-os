@@ -68,12 +68,32 @@ table_t *tbl_open(const char *raw) {
     vkfs_read(fn, buf, sz);
     memset(t, 0, sizeof *t);
     memcpy(&t->hdr, buf, sizeof t->hdr);
-    if (t->hdr.magic != DB_MAGIC) { kfree(buf); return 0; }
+    /* validate the schema read from disk before using any of it */
+    bool ok = t->hdr.magic == DB_MAGIC && t->hdr.ncols >= 1 && t->hdr.ncols <= DB_MAX_COLS;
+    for (uint32_t c = 0; ok && c < t->hdr.ncols; c++) {
+        t->hdr.cols[c].name[DB_NAME_LEN - 1] = 0;
+        int ty = t->hdr.cols[c].type & 0x7F;
+        ok = t->hdr.cols[c].name[0] && (ty == COL_INT || ty == COL_TEXT);
+    }
+    if (!ok || t->hdr.row_size != col_offset(t, t->hdr.ncols)) {
+        kfree(buf); memset(t, 0, sizeof *t);
+        kprintf("[vukangdb] table '%s' is corrupted - refusing to load\n", name);
+        return 0;
+    }
     strcpy(t->name, name);
-    t->hdr.nslots = (sz - sizeof(table_hdr_t)) / t->hdr.row_size < t->hdr.nslots ? (sz - sizeof(table_hdr_t)) / t->hdr.row_size : t->hdr.nslots;
+    uint32_t fit = (sz - sizeof(table_hdr_t)) / t->hdr.row_size;
+    if (t->hdr.nslots > fit) t->hdr.nslots = fit;
     if (!grow(t, t->hdr.nslots ? t->hdr.nslots : 1)) { kfree(buf); return 0; }
     memcpy(t->rows, buf + sizeof(table_hdr_t), t->hdr.nslots * t->hdr.row_size);
     kfree(buf);
+    t->hdr.nlive = 0;                                   /* recount + terminate every TEXT field */
+    for (uint32_t s = 0; s < t->hdr.nslots; s++) {
+        uint8_t *r = tbl_row(t, s);
+        if (r[0] != 1) { r[0] = 0; continue; }
+        t->hdr.nlive++;
+        for (uint32_t c = 0; c < t->hdr.ncols; c++)
+            if (col_type(t, c) == COL_TEXT) r[col_offset(t, c) + DB_TEXT_LEN - 1] = 0;
+    }
     t->used = true; t->on_disk = true;
     return t;
 }
@@ -87,8 +107,8 @@ table_t *tbl_create(const char *raw, column_t *cols, int ncols) {
     t->hdr.magic = DB_MAGIC; t->hdr.version = 1; t->hdr.ncols = ncols;
     memcpy(t->hdr.cols, cols, ncols * sizeof(column_t));
     t->hdr.row_size = col_offset(t, ncols);
+    if (!grow(t, 16)) { memset(t, 0, sizeof *t); return 0; }
     t->used = true; t->dirty = true;
-    grow(t, 16);
     return t;
 }
 
