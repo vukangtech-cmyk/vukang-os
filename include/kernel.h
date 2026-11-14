@@ -1,7 +1,7 @@
 #ifndef VK_KERNEL_H
 #define VK_KERNEL_H
 #define VUKANG_NAME    "VUKANG OS"
-#define VUKANG_VERSION "0.2.1"
+#define VUKANG_VERSION "0.2.2"
 #define VUKANG_CODENAME "Serengeti"
 void panic(const char *msg, const char *file, int line) __attribute__((noreturn));
 #define PANIC(m) panic(m, __FILE__, __LINE__)

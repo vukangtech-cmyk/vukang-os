@@ -112,36 +112,69 @@ static uint32_t now_packed(void) {
     return ((uint32_t)(t.year - 2000) << 26) | (t.month << 22) | (t.day << 17) | (t.hour << 12) | (t.minute << 6) | t.second;
 }
 
+/* Grow an extent in place: claim sectors [st+cur, st+want) if all are free. */
+static bool extend_extent(uint32_t st, uint32_t cur, uint32_t want) {
+    if (want <= cur || st + want > sb.total || st + want < st) return false;
+    for (uint32_t k = st + cur; k < st + want; k++) if (bget(k)) return false;
+    for (uint32_t k = st + cur; k < st + want; k++) bset(k, 1);
+    return true;
+}
+
+/* Write a whole file. Failure-safe ordering:
+ *   1. reserve space (grow in place, or a NEW extent) while the old one is
+ *      still allocated - nothing is released yet;
+ *   2. no space -> return false; the existing file is left untouched;
+ *   3. write the data; on an I/O error undo the reservation and keep the
+ *      old start/alloc;
+ *   4. only after the data is on disk: release the old extent, update the
+ *      directory entry and flush the metadata. */
 bool vkfs_write(const char *name, const void *data, uint32_t len) {
-    if (!mounted || !name[0] || strlen(name) >= VKFS_NAME_LEN) return false;
+    if (!mounted || !name || !name[0] || strlen(name) >= VKFS_NAME_LEN) return false;
     uint32_t f = irq_save();
     int i = find(name);
-    if (i < 0) {
+    bool is_new = i < 0;
+    if (is_new) {
         for (int k = 0; k < VKFS_MAX_FILES; k++) if (!(dir[k].flags & 1)) { i = k; break; }
         if (i < 0) { irq_restore(f); return false; }
-        memset(&dir[i], 0, sizeof dir[i]);
-        strcpy(dir[i].name, name);
-        sb.files++;
     }
+    uint32_t old_start = is_new ? 0 : dir[i].start;
+    uint32_t old_alloc = is_new ? 0 : dir[i].alloc;
     uint32_t need = (len + 511) / 512; if (!need) need = 1;
-    if (dir[i].alloc < need) {
-        if (dir[i].alloc) free_extent(dir[i].start, dir[i].alloc);
+    uint32_t st = old_start, alloc = old_alloc;
+    bool moved = false;
+
+    if (alloc < need) {
         uint32_t want = need + need / 2;                       /* room to grow */
-        uint32_t st = alloc_extent(want);
-        if (!st) { want = need; st = alloc_extent(need); }
-        if (!st) { dir[i].flags = 0; sb.files--; flush_meta(); irq_restore(f); return false; }
-        dir[i].start = st; dir[i].alloc = want;
+        if (old_alloc && extend_extent(old_start, old_alloc, want)) alloc = want;
+        else if (old_alloc && extend_extent(old_start, old_alloc, need)) alloc = need;
+        else {
+            uint32_t n = want;
+            uint32_t ns = alloc_extent(n);
+            if (!ns) { n = need; ns = alloc_extent(n); }
+            if (!ns) { irq_restore(f); return false; }        /* disk full: old file intact */
+            st = ns; alloc = n; moved = true;
+        }
     }
+
     const uint8_t *p = data;
     uint8_t sec[512];
     for (uint32_t s = 0; s < need; s++) {
-        uint32_t off = s * 512, chunk = len - off > 512 ? 512 : len - off;
-        if (len == 0) chunk = 0;
+        uint32_t off = s * 512, chunk = len > off ? (len - off > 512 ? 512 : len - off) : 0;
         memset(sec, 0, 512);
         if (chunk) memcpy(sec, p + off, chunk);
-        if (!dev->write(dir[i].start + s, 1, sec)) { irq_restore(f); return false; }
+        if (!dev->write(st + s, 1, sec)) {                    /* undo the reservation */
+            if (moved) free_extent(st, alloc);
+            else if (alloc > old_alloc) free_extent(old_start + old_alloc, alloc - old_alloc);
+            irq_restore(f);
+            return false;
+        }
     }
+
+    if (moved && old_alloc) free_extent(old_start, old_alloc);   /* data is safe now */
+    if (is_new) { memset(&dir[i], 0, sizeof dir[i]); strcpy(dir[i].name, name); }
+    dir[i].start = st; dir[i].alloc = alloc;
     dir[i].size = len; dir[i].flags = 1; dir[i].mtime = now_packed();
+    if (is_new) sb.files++;
     bool ok = flush_meta();
     irq_restore(f);
     return ok;

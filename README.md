@@ -36,7 +36,7 @@ git clone https://github.com/vukangtech-cmyk/vukang-os.git
 cd vukang-os
 make run          # inafungua dirisha la QEMU
 make run-serial   # bila dirisha, shell ndani ya terminal (toka: Ctrl+A kisha X)
-make test         # majaribio ya kiotomatiki (30 checks)
+make test         # majaribio ya kiotomatiki (checks 42: 30 za mfumo + 12 za usalama wa data)
 ```
 
 ### Kuendesha toleo lolote (v0.1.0, v0.2.0, v0.2.1 ...)

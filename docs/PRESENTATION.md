@@ -12,7 +12,7 @@ Lengo ni presentation ya dakika 10 hadi 12: slides 8, demo ya moja kwa moja ya d
 - Sifuri maktaba za nje: hakuna Linux, hakuna libc.
 - Subsystems 11: boot, CPU, memory, paging, heap, multitasking, processes (ELF + address space), syscalls, drivers 7, filesystem, database.
 - Mashambulizi 6 kutoka ring 3, yote yanazuiwa (`security`: "6/6 protections held").
-- Majaribio 23 ndani ya kernel (`selftest`) na checks 30 za kiotomatiki ndani ya QEMU kwenye kila PR.
+- Majaribio 23 ndani ya kernel (`selftest`) na checks 42 za kiotomatiki ndani ya QEMU kwenye kila PR.
 - Boot animation ya fps karibu 100 inayochorwa na kernel yenyewe, bila GPU driver wala maktaba ya graphics.
 - ISO ya MB 5.6 inayowaka kwa chini ya sekunde 3.
 
@@ -81,5 +81,5 @@ Kubadilisha task (context switching) na kushuka kwenda ring 3. Hapo kosa moja la
 ## Vidokezo
 
 - Usisome slides. Demo ndiyo nyota ya presentation.
-- Sema namba: "mistari 3,200", "mashambulizi 6 yote yamezuiwa", "majaribio 23 + 30", "sekunde 3 kuwaka".
+- Sema namba: "mistari 3,200", "mashambulizi 6 yote yamezuiwa", "majaribio 23 + 42", "sekunde 3 kuwaka".
 - Kuwa mkweli kuhusu mipaka (32-bit, hakuna JOIN bado). Majaji wanaheshimu uwazi na roadmap iliyo wazi.

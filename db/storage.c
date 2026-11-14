@@ -112,8 +112,11 @@ table_t *tbl_create(const char *raw, column_t *cols, int ncols) {
     return t;
 }
 
+/* Write a table back to its file. The on-disk image is built in a separate
+ * buffer (live rows only); the in-memory table is compacted to match it only
+ * AFTER vkfs_write succeeded, so a failed write never leaves RAM describing
+ * a layout that is not on disk. */
 bool tbl_flush(table_t *t) {
-    /* compact: write only live rows */
     uint32_t live = 0;
     for (uint32_t s = 0; s < t->hdr.nslots; s++) if (tbl_row(t, s)[0]) live++;
     uint32_t sz = sizeof(table_hdr_t) + live * t->hdr.row_size;
@@ -122,14 +125,26 @@ bool tbl_flush(table_t *t) {
     uint32_t w = 0;
     for (uint32_t s = 0; s < t->hdr.nslots; s++)
         if (tbl_row(t, s)[0]) { memcpy(buf + sizeof(table_hdr_t) + w * t->hdr.row_size, tbl_row(t, s), t->hdr.row_size); w++; }
-    memcpy(t->rows, buf + sizeof(table_hdr_t), live * t->hdr.row_size);
-    t->hdr.nslots = live; t->hdr.nlive = live;
-    memcpy(buf, &t->hdr, sizeof t->hdr);
+    table_hdr_t h = t->hdr;
+    h.nslots = live; h.nlive = live;
+    memcpy(buf, &h, sizeof h);
     char fn[40]; fname(fn, t->name);
     bool ok = vkfs_write(fn, buf, sz);
+    if (ok) {                                   /* now RAM may take the disk layout */
+        memcpy(t->rows, buf + sizeof(table_hdr_t), live * t->hdr.row_size);
+        t->hdr.nslots = live; t->hdr.nlive = live;
+        t->dirty = false; t->on_disk = true;
+    }
     kfree(buf);
-    if (ok) { t->dirty = false; t->on_disk = true; }
     return ok;
+}
+
+/* Throw away the cached copy of a table; the next tbl_open() reloads it from
+ * disk, so memory can never disagree with what is actually stored. */
+void tbl_discard(table_t *t) {
+    if (!t || !t->used) return;
+    kfree(t->rows);
+    memset(t, 0, sizeof *t);
 }
 
 bool tbl_drop(const char *raw) {
@@ -142,10 +157,11 @@ bool tbl_drop(const char *raw) {
 
 bool tbl_commit(void) {
     bool ok = true;
-    for (int i = 0; i < DB_MAX_TABLES; i++) if (cache[i].used && cache[i].dirty) ok &= tbl_flush(&cache[i]);
+    for (int i = 0; i < DB_MAX_TABLES; i++)
+        if (cache[i].used && cache[i].dirty && !tbl_flush(&cache[i])) { tbl_discard(&cache[i]); ok = false; }
     return ok;
 }
 void tbl_rollback(void) {
     for (int i = 0; i < DB_MAX_TABLES; i++)
-        if (cache[i].used && cache[i].dirty) { kfree(cache[i].rows); memset(&cache[i], 0, sizeof cache[i]); }
+        if (cache[i].used && cache[i].dirty) tbl_discard(&cache[i]);
 }

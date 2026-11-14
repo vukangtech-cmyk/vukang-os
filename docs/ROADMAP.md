@@ -12,6 +12,8 @@ Kernel, GDT/IDT/TSS, paging, heap, scheduler, syscalls, ring 3, drivers 7, VKFS,
 - [x] Mpangilio salama wa kuwaka na ukaguzi wa heap dhidi ya RAM na ramani
 - [x] Ukaguzi wa VKFS, ATA na VukangDB dhidi ya data iliyoharibika
 - [x] `security`, `selftest`, checks 30 za CI
+- [x] v0.2.1: boot animation na console ya graphics (framebuffer)
+- [x] v0.2.2: usalama wa data: disk ikijaa, INSERT/UPDATE za yote au hakuna, PRIMARY KEY kwenye UPDATE (checks 42)
 
 ## v0.3.0 "Ngorongoro": Programu halisi na database yenye nguvu
 - [ ] ELF loader: programu za nje kutoka VKFS
