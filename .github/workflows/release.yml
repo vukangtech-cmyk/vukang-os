@@ -1,0 +1,38 @@
+name: Release VUKANG OS ISO
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to attach the ISO to (e.g. v0.1.0)'
+        required: true
+        default: 'v0.1.0'
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nasm qemu-system-x86 grub-pc-bin grub-common xorriso mtools
+      - name: Build ISO
+        run: make iso
+      - name: Boot test in QEMU
+        run: make test
+      - name: Checksum
+        run: cd build && sha256sum vukang-os.iso > vukang-os.iso.sha256
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: VUKANG OS ${{ github.event.inputs.tag || github.ref_name }}
+          files: |
+            build/vukang-os.iso
+            build/vukang-os.iso.sha256
+          fail_on_unmatched_files: true

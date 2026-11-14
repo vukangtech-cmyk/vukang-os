@@ -25,7 +25,7 @@ gh pr create
 - MINOR (0.2.0): vipengele vipya
 - MAJOR (1.0.0): mabadiliko makubwa, mfano muundo mpya wa VKFS
 
-Kwa kila toleo: badilisha `VUKANG_VERSION` ndani ya `include/kernel.h`, andika `CHANGELOG.md`, kisha `git tag v0.2.0 && git push --tags`. Kila release ina jina la mlima au mbuga ya Tanzania: Kilimanjaro, Serengeti, Ngorongoro, Meru...
+Kwa kila toleo: badilisha `VUKANG_VERSION` ndani ya `include/kernel.h`, andika `CHANGELOG.md`, kisha `git tag v0.2.0 && git push --tags`. Workflow `release.yml` itajenga ISO, kuipima na kuiweka kwenye GitHub Releases yenyewe. Kila release ina jina la mlima au mbuga ya Tanzania: Kilimanjaro, Serengeti, Ngorongoro, Meru...
 
 ## Kuongeza amri mpya ya shell
 
