@@ -1,5 +1,10 @@
 # Changelog
 
+## [Haijatolewa]
+### Imeongezwa
+- `make versions`, `make run-version V=<tag>` na wenzake (`scripts/version.sh`): kuwasha toleo lolote la zamani au jipya, kila moja kwenye worktree na disk yake
+
+
 ## [0.2.1] "Serengeti" - 2026-11-14
 Toleo la sura mpya: boot animation na console ya graphics.
 

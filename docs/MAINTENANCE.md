@@ -27,6 +27,21 @@ gh pr create
 
 Kwa kila toleo: badilisha `VUKANG_VERSION` ndani ya `include/kernel.h`, andika `CHANGELOG.md`, kisha `git tag v0.2.0 && git push --tags`. Workflow `release.yml` itajenga ISO, kuipima na kuiweka kwenye GitHub Releases yenyewe. Kila release ina jina la mlima au mbuga ya Tanzania: Kilimanjaro, Serengeti, Ngorongoro, Meru...
 
+## Kuendesha na kulinganisha matoleo
+
+`scripts/version.sh` (kupitia `make`) inatoa kila tag kwenye git worktree yake ndani ya `build/versions/<tag>`, inaijenga kwa `Makefile` ya toleo hilo, na inaitumia disk yake. Kwa hiyo unaweza kuonyesha safari ya mradi kwenye presentation: v0.1.0, kisha v0.2.0, kisha v0.2.1.
+
+| Amri | Kazi |
+|---|---|
+| `make versions` | orodha ya tags (inavuta tags mpya kutoka GitHub) |
+| `make run-version V=v0.1.0` | dirisha la QEMU la toleo hilo |
+| `make run-serial-version V=v0.2.0` | shell ya toleo hilo ndani ya terminal |
+| `make iso-version V=v0.2.1` | jenga ISO tu na uonyeshe ilipo |
+| `make test-version V=v0.2.0` | majaribio ya toleo hilo |
+| `make clean-versions` | futa worktrees zote za matoleo |
+
+`V` inaweza kuwa tag, `latest` (tag mpya kabisa) au tawi kama `main`. Toleo jipya linapotolewa (`git tag` + push), linaonekana kwenye `make versions` bila kubadilisha chochote.
+
 ## Kuongeza amri mpya ya shell
 
 Ndani ya `shell/shell.c`:

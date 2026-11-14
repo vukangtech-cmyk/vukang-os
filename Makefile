@@ -28,7 +28,7 @@ USER_ELFS  := $(patsubst %,$(BUILD)/user/%.elf,$(USER_PROGS))
 PROG_ASM   := $(BUILD)/user/programs.asm
 OBJ        += $(BUILD)/user/programs.asm.o
 
-.PHONY: all iso run run-serial disk clean test splash font
+.PHONY: all iso run run-serial disk clean test splash font versions run-version run-serial-version iso-version test-version clean-versions
 
 all: $(KERNEL)
 
@@ -100,5 +100,23 @@ run-serial: iso disk
 test: iso
 	@bash scripts/test.sh
 
+# Any released version side by side (scripts/version.sh), e.g.
+#   make versions                 list tags
+#   make run-version V=v0.1.0     run that version (own worktree + disk)
+V ?= latest
+versions:
+	@bash scripts/version.sh list
+run-version:
+	@bash scripts/version.sh run $(V)
+run-serial-version:
+	@bash scripts/version.sh run-serial $(V)
+iso-version:
+	@bash scripts/version.sh iso $(V)
+test-version:
+	@bash scripts/version.sh test $(V)
+clean-versions:
+	@bash scripts/version.sh clean
+
 clean:
 	rm -rf $(BUILD)
+	@git worktree prune 2>/dev/null || true
