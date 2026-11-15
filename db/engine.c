@@ -406,7 +406,11 @@ static int exec_one(void) {
     ERR("unknown statement '%s'", peek()->text);
 }
 
-void db_init(void) { db_in_txn = false; }
+void db_init(void) {
+    db_in_txn = false;
+    int n = wal_recover();                        /* finish (or discard) a COMMIT that was cut short */
+    if (n > 0) kprintf("[vukangdb] recovery: replayed %d table(s) from an interrupted COMMIT\n", n);
+}
 
 int db_exec(const char *sql) {
     if (!vkfs_mounted()) { kprintf("VukangDB: no filesystem mounted (run 'format')\n"); return -1; }

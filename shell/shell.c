@@ -224,6 +224,18 @@ static void c_append(char *a) {
     kfree(buf);
 }
 static void c_rm(char *a) { char *n = word(&a); kprintf(vkfs_delete(n) ? "removed %s\n" : "rm: %s: no such file\n", n); }
+static void c_walcrash(char *a) {          /* debug: simulate a power cut inside the next COMMIT */
+    if (!a || !*a) {
+        kprintf("walcrash <1-5|off>  (now: %d)\n"
+                "  1 before the log is written      4 all applied, log not removed\n"
+                "  2 log saved, nothing applied     5 corrupt (torn) log\n"
+                "  3 log saved, first table torn\n", wal_crash_point);
+        return;
+    }
+    wal_crash_point = strcmp(a, "off") == 0 ? 0 : atoi(a);
+    if (wal_crash_point < 0 || wal_crash_point > 5) wal_crash_point = 0;
+    kprintf("crash point: %d%s\n", wal_crash_point, wal_crash_point ? " (the next COMMIT will stop the machine)" : " (off)");
+}
 static void c_df(char *a) {
     (void)a; uint32_t t, f, n; vkfs_info(&t, &f, &n);
     kprintf("VKFS on %s\n  size %u KiB, free %u KiB, used %u%%, files %u/%d\n",
@@ -295,6 +307,7 @@ const cmd_t commands[] = {
     { "format", "yes", "erase disk and create VKFS", c_format },
     { "sql", "<statement>", "run one SQL statement", c_sql },
     { "db", "", "open the VukangDB SQL console", c_db },
+    { "walcrash", "<1-5|off>", "debug: simulate a power cut during COMMIT", c_walcrash },
     { "demo", "", "guided showcase (for presentations)", c_demo },
     { "color", "<1-15>", "change text color", c_color },
     { "beep", "", "PC speaker sound", c_beep },

@@ -52,4 +52,17 @@ int      col_index(table_t *t, const char *name);
 uint32_t col_offset(table_t *t, int c);
 int      col_type(table_t *t, int c);
 extern bool db_in_txn;
+
+/* ---------- write-ahead log (db/wal.c) ---------- */
+#define WAL_FILE   ".wal"
+#define WAL_MAX    (512 * 1024)       /* biggest transaction the log accepts */
+#define WAL_DELETE 0xFFFFFFFFu        /* item length meaning "delete this file" */
+typedef struct { char name[40]; const void *data; uint32_t len; } wal_item_t;
+typedef enum { WAL_FAILED = 0,        /* nothing was committed */
+               WAL_OK = 1,            /* committed and applied */
+               WAL_PENDING = 2        /* committed (safe in the log) but not applied yet */
+} wal_result_t;
+wal_result_t wal_commit(const wal_item_t *items, int n);
+int          wal_recover(void);       /* boot: replay a committed log; returns items replayed, -1 on error */
+
 #endif

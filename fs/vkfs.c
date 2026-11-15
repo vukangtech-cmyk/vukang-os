@@ -33,10 +33,36 @@ static blockdev_t *dev;
 static int  bget(uint32_t s) { return bitmap[s >> 3] & (1 << (s & 7)); }
 static void bset(uint32_t s, int v) { if (v) bitmap[s >> 3] |= 1 << (s & 7); else bitmap[s >> 3] &= ~(1 << (s & 7)); }
 
+/* ---- dry run ("would these writes fit?") ------------------------------------
+ * The WAL needs room for the log AND the new table images. Instead of guessing,
+ * it replays the real allocation code on a scratch copy of the metadata with
+ * disk writes switched off (vkfs_sim_begin ... vkfs_sim_end). Interrupts stay
+ * off meanwhile, so no other task can see the fake state. */
+static bool sim_on;
+static uint32_t sim_flags;
+static superblock_t sim_sb;
+static uint8_t sim_bitmap[MAX_SECTORS / 8];
+static vkfs_entry_t sim_dir[VKFS_MAX_FILES];
+static bool devw(uint32_t lba, uint8_t n, const void *b) { return sim_on ? true : dev->write(lba, n, b); }
+
+bool vkfs_sim_begin(void) {
+    if (!mounted || sim_on) return false;
+    sim_flags = irq_save();
+    memcpy(&sim_sb, &sb, sizeof sb); memcpy(sim_bitmap, bitmap, sizeof bitmap); memcpy(sim_dir, dir, sizeof dir);
+    sim_on = true;
+    return true;
+}
+void vkfs_sim_end(void) {
+    if (!sim_on) return;
+    memcpy(&sb, &sim_sb, sizeof sb); memcpy(bitmap, sim_bitmap, sizeof bitmap); memcpy(dir, sim_dir, sizeof dir);
+    sim_on = false;
+    irq_restore(sim_flags);
+}
+
 static bool flush_meta(void) {
-    bool ok = dev->write(1, 1, &sb);
-    for (uint32_t i = 0; i < sb.bitmap_sectors; i++) ok &= dev->write(sb.bitmap_start + i, 1, bitmap + i * 512);
-    for (uint32_t i = 0; i < DIR_SECTORS; i++) ok &= dev->write(sb.dir_start + i, 1, (uint8_t *)dir + i * 512);
+    bool ok = devw(1, 1, &sb);
+    for (uint32_t i = 0; i < sb.bitmap_sectors; i++) ok &= devw(sb.bitmap_start + i, 1, bitmap + i * 512);
+    for (uint32_t i = 0; i < DIR_SECTORS; i++) ok &= devw(sb.dir_start + i, 1, (uint8_t *)dir + i * 512);
     return ok;
 }
 
@@ -162,7 +188,7 @@ bool vkfs_write(const char *name, const void *data, uint32_t len) {
         uint32_t off = s * 512, chunk = len > off ? (len - off > 512 ? 512 : len - off) : 0;
         memset(sec, 0, 512);
         if (chunk) memcpy(sec, p + off, chunk);
-        if (!dev->write(st + s, 1, sec)) {                    /* undo the reservation */
+        if (!devw(st + s, 1, sec)) {                    /* undo the reservation */
             if (moved) free_extent(st, alloc);
             else if (alloc > old_alloc) free_extent(old_start + old_alloc, alloc - old_alloc);
             irq_restore(f);

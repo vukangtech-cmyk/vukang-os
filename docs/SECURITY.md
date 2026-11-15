@@ -178,4 +178,4 @@ Matatizo matatu yaliyoweza kupoteza au kuharibu data. Yote yamethibitishwa na `s
 - Programu za ELF bado zimewekwa ndani ya kernel image (`incbin`). Kuzipakia kutoka VKFS ni kazi ya v0.3.
 - Hakuna `fork`/`exec` bado, na syscalls za faili hazipo kwa user.
 - Hakuna ASLR, NX bit (inahitaji PAE) wala stack canaries za compiler.
-- VukangDB bado haina journal (WAL). Disk ikijaa data iko salama (v0.2.2), lakini umeme ukikatika au disk ikishindwa wakati faili linaandikwa pale pale (bila kuhamishwa), sehemu ya faili inaweza kuharibika. WAL ni kazi ya v0.3.
+- VukangDB sasa ina Write-Ahead Log (v0.3, angalia [WAL.md](WAL.md)): umeme ukikatika katikati ya COMMIT, tables ni zote za zamani au zote mpya. Bado kuna pengo moja: metadata ya VKFS (superblock, bitmap, directory) inaandikwa sectors kadhaa kwa mfululizo; kukatika katikati kunaweza kuacha nafasi isiyotumika (leak), na mount inairekebisha, lakini si journaled.
