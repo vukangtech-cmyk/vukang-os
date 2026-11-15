@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased] v0.3.0 "Ngorongoro"
+
+### Imeongezwa
+- **Write-Ahead Log (WAL)** (`db/wal.c`, maelezo: [docs/WAL.md](docs/WAL.md)): COMMIT inaandika picha kamili za tables kwenye `.wal` (yenye CRC32) kabla ya kugusa table yoyote. Umeme ukikatika, `db_init` inarudia (redo) log halali au inatupa isiyokamilika. COMMIT ya tables nyingi ni atomic
+- Ukaguzi wa nafasi kabla ya COMMIT (`vkfs_sim_begin/end`): log na picha mpya lazima zitoshe, la sivyo COMMIT inakataliwa kabla ya disk kuguswa
+- Amri ya debug `walcrash <1-5|off>`: inaiga umeme kukatika kwenye hatua maalum ya COMMIT
+- `scripts/wal_test.py` na `make test-wal` (checks 41): kila hatua ya kukata umeme, COMMIT ya tables mbili, `.wal` mbovu, disk kujaa
+
+### Imebadilika
+- Kila statement ya auto-commit sasa inapita kwenye WAL (kuandika mara mbili: log kisha table). Kwa hiyo table kubwa inahitaji nafasi ya takriban mara mbili ya disk
+
 ## [0.2.2] "Serengeti" - 2026-11-14
 Toleo la usalama wa data. Maelezo kamili: [docs/SECURITY.md](docs/SECURITY.md) (sehemu ya v0.2.2).
 

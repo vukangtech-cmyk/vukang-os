@@ -34,5 +34,7 @@ bool vkfs_delete(const char *name);
 bool vkfs_exists(const char *name);
 int  vkfs_size(const char *name);
 int  vkfs_list(vkfs_entry_t *out, int max);
+bool vkfs_sim_begin(void);   /* dry run: writes only change a scratch copy of the metadata ... */
+void vkfs_sim_end(void);     /* ... which this call restores (interrupts are off in between) */
 void vkfs_info(uint32_t *total_sectors, uint32_t *free_sectors, uint32_t *files);
 #endif

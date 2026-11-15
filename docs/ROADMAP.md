@@ -22,7 +22,7 @@ Kernel, GDT/IDT/TSS, paging, heap, scheduler, syscalls, ring 3, drivers 7, VKFS,
 - [ ] Folda (directories) kwenye VKFS
 - [ ] B-tree index kwa PRIMARY KEY (utafutaji wa O(log n))
 - [ ] JOIN ya tables mbili
-- [ ] Write-Ahead Log (WAL): data salama hata umeme ukikatika
+- [x] Write-Ahead Log (WAL): data salama hata umeme ukikatika (`db/wal.c`, `docs/WAL.md`, checks 41)
 - [ ] Aina mpya: FLOAT, DATE, TEXT ndefu
 - [ ] Historia ya amri kwa vitufe vya mshale (shell)
 

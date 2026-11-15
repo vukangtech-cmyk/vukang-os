@@ -112,15 +112,15 @@ table_t *tbl_create(const char *raw, column_t *cols, int ncols) {
     return t;
 }
 
-/* Write a table back to its file. The on-disk image is built in a separate
- * buffer (live rows only); the in-memory table is compacted to match it only
- * AFTER vkfs_write succeeded, so a failed write never leaves RAM describing
- * a layout that is not on disk. */
-bool tbl_flush(table_t *t) {
+/* Build the on-disk image of a table (live rows only) in a separate buffer.
+ * RAM is NOT touched: it may adopt the compacted layout only after the
+ * commit succeeded (tbl_adopt), so a failure never leaves RAM describing a
+ * layout that is not on disk. Caller frees *img. */
+static bool tbl_image(table_t *t, uint8_t **img, uint32_t *sz, uint32_t *live_out) {
     uint32_t live = 0;
     for (uint32_t s = 0; s < t->hdr.nslots; s++) if (tbl_row(t, s)[0]) live++;
-    uint32_t sz = sizeof(table_hdr_t) + live * t->hdr.row_size;
-    uint8_t *buf = kmalloc(sz);
+    uint32_t size = sizeof(table_hdr_t) + live * t->hdr.row_size;
+    uint8_t *buf = kmalloc(size);
     if (!buf) return false;
     uint32_t w = 0;
     for (uint32_t s = 0; s < t->hdr.nslots; s++)
@@ -128,15 +128,28 @@ bool tbl_flush(table_t *t) {
     table_hdr_t h = t->hdr;
     h.nslots = live; h.nlive = live;
     memcpy(buf, &h, sizeof h);
-    char fn[40]; fname(fn, t->name);
-    bool ok = vkfs_write(fn, buf, sz);
-    if (ok) {                                   /* now RAM may take the disk layout */
-        memcpy(t->rows, buf + sizeof(table_hdr_t), live * t->hdr.row_size);
-        t->hdr.nslots = live; t->hdr.nlive = live;
-        t->dirty = false; t->on_disk = true;
-    }
-    kfree(buf);
-    return ok;
+    *img = buf; *sz = size; *live_out = live;
+    return true;
+}
+
+/* RAM takes over the compacted layout that is now (or will be) on disk. */
+static void tbl_adopt(table_t *t, const uint8_t *img, uint32_t live, bool applied) {
+    memcpy(t->rows, img + sizeof(table_hdr_t), live * t->hdr.row_size);
+    t->hdr.nslots = live; t->hdr.nlive = live;
+    t->on_disk = true;
+    t->dirty = !applied;            /* WAL_PENDING: still has to reach the table file */
+}
+
+/* Write one table through the write-ahead log (crash-safe). */
+bool tbl_flush(table_t *t) {
+    uint8_t *img; uint32_t sz, live;
+    if (!tbl_image(t, &img, &sz, &live)) return false;
+    wal_item_t it; memset(&it, 0, sizeof it);
+    fname(it.name, t->name); it.data = img; it.len = sz;
+    wal_result_t r = wal_commit(&it, 1);
+    if (r != WAL_FAILED) tbl_adopt(t, img, live, r == WAL_OK);
+    kfree(img);
+    return r != WAL_FAILED;
 }
 
 /* Throw away the cached copy of a table; the next tbl_open() reloads it from
@@ -155,12 +168,29 @@ bool tbl_drop(const char *raw) {
     return vkfs_delete(fn);
 }
 
+/* COMMIT: every dirty table goes into ONE log record, so either all the
+ * tables change or none does - even if the power fails in the middle. */
 bool tbl_commit(void) {
-    bool ok = true;
-    for (int i = 0; i < DB_MAX_TABLES; i++)
-        if (cache[i].used && cache[i].dirty && !tbl_flush(&cache[i])) { tbl_discard(&cache[i]); ok = false; }
-    return ok;
+    wal_item_t items[DB_MAX_TABLES]; uint8_t *imgs[DB_MAX_TABLES];
+    uint32_t lives[DB_MAX_TABLES]; table_t *ts[DB_MAX_TABLES];
+    int n = 0; bool ok = true;
+    memset(items, 0, sizeof items);
+    for (int i = 0; i < DB_MAX_TABLES && ok; i++) {
+        if (!cache[i].used || !cache[i].dirty) continue;
+        uint32_t sz;
+        if (!tbl_image(&cache[i], &imgs[n], &sz, &lives[n])) { ok = false; break; }
+        fname(items[n].name, cache[i].name); items[n].data = imgs[n]; items[n].len = sz;
+        ts[n++] = &cache[i];
+    }
+    wal_result_t r = ok ? wal_commit(items, n) : WAL_FAILED;
+    for (int k = 0; k < n; k++) {
+        if (r != WAL_FAILED) tbl_adopt(ts[k], imgs[k], lives[k], r == WAL_OK);
+        kfree(imgs[k]);
+    }
+    if (r == WAL_FAILED) { tbl_rollback(); return false; }    /* nothing was committed: back to the disk state */
+    return true;
 }
+
 void tbl_rollback(void) {
     for (int i = 0; i < DB_MAX_TABLES; i++)
         if (cache[i].used && cache[i].dirty) tbl_discard(&cache[i]);
