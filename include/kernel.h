@@ -1,8 +1,8 @@
 #ifndef VK_KERNEL_H
 #define VK_KERNEL_H
 #define VUKANG_NAME    "VUKANG OS"
-#define VUKANG_VERSION "0.2.2"
-#define VUKANG_CODENAME "Serengeti"
+#define VUKANG_VERSION "0.3.0"
+#define VUKANG_CODENAME "Ngorongoro"
 void panic(const char *msg, const char *file, int line) __attribute__((noreturn));
 #define PANIC(m) panic(m, __FILE__, __LINE__)
 #define ASSERT(c) do { if (!(c)) panic("ASSERT: " #c, __FILE__, __LINE__); } while (0)
