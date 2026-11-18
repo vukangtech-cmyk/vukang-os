@@ -1,6 +1,7 @@
 # Changelog
 
-## [Unreleased] v0.3.0 "Ngorongoro"
+## [0.3.0] "Ngorongoro" - 2026-11-18
+Toleo la kwanza la v0.3.0: Write-Ahead Log. B-tree, historia ya amri, folda na JOIN zinakuja kwenye v0.3.x/v0.4.
 
 ### Imeongezwa
 - **Write-Ahead Log (WAL)** (`db/wal.c`, maelezo: [docs/WAL.md](docs/WAL.md)): COMMIT inaandika picha kamili za tables kwenye `.wal` (yenye CRC32) kabla ya kugusa table yoyote. Umeme ukikatika, `db_init` inarudia (redo) log halali au inatupa isiyokamilika. COMMIT ya tables nyingi ni atomic

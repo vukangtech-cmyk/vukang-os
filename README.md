@@ -45,6 +45,7 @@ make test         # majaribio ya kiotomatiki (checks 42: 30 za mfumo + 12 za usa
 make versions                    # orodha ya matoleo yote
 make run-version V=v0.1.0        # washa v0.1.0 "Kilimanjaro"
 make run-version V=v0.2.0        # washa v0.2.0 "Serengeti"
+make run-version V=v0.3.0        # washa v0.3.0 "Ngorongoro"
 make run-version                 # toleo jipya kabisa (latest)
 make run-serial-version V=v0.1.0 # bila dirisha
 make clean-versions              # futa matoleo yaliyojengwa
